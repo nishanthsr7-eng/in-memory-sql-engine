@@ -1,0 +1,20 @@
+namespace Sift.Core.Sql;
+
+public enum TokenType
+{
+    // literals & identifiers
+    Identifier,
+    Number,
+    String,
+
+    // keywords
+    Select, From, Where, And, Or, Not, Between, In, Is, Null, Limit, As, True, False,
+
+    // punctuation
+    Comma, Star, LParen, RParen, Dot, Semicolon,
+
+    // operators
+    Eq, NotEq, Lt, LtEq, Gt, GtEq,
+
+    Eof
+}

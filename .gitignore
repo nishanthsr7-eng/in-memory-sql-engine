@@ -1,0 +1,16 @@
+## .NET
+bin/
+obj/
+*.user
+
+## Rider / VS
+.vs/
+.idea/
+*.suo
+
+## BenchmarkDotNet
+BenchmarkDotNet.Artifacts/
+
+## OS
+.DS_Store
+Thumbs.db
