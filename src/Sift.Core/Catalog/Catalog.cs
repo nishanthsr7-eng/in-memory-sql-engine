@@ -5,6 +5,8 @@ public sealed class Catalog
 {
     private readonly Dictionary<string, Table> _tables = new(StringComparer.OrdinalIgnoreCase);
 
+    public IEnumerable<string> TableNames => _tables.Values.Select(t => t.Name);
+
     public void AddTable(Table table) => _tables[table.Name] = table;
 
     public Table GetTable(string name)

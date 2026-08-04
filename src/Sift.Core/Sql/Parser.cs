@@ -6,10 +6,14 @@ namespace Sift.Core.Sql;
 
 /// <summary>
 /// Recursive-descent parser for the in-scope grammar (see PLAN.md §4): a single SELECT with
-/// FROM / WHERE / LIMIT. Deliberately minimal — see PLAN.md §2 on why parsing isn't the star here.
+/// JOIN / WHERE / GROUP BY / HAVING / ORDER BY / LIMIT. Deliberately minimal — see PLAN.md §2
+/// on why parsing isn't the star here.
 /// </summary>
 public sealed class Parser
 {
+    private static readonly HashSet<string> AggregateFunctionNames =
+        new(StringComparer.OrdinalIgnoreCase) { "COUNT", "SUM", "AVG", "MIN", "MAX" };
+
     private readonly List<Token> _tokens;
     private int _pos;
 
@@ -22,6 +26,8 @@ public sealed class Parser
     }
 
     private Token Current => _tokens[_pos];
+
+    private Token PeekToken(int ahead = 1) => _tokens[Math.Min(_pos + ahead, _tokens.Count - 1)];
 
     private Token Advance() => _tokens[_pos++];
 
@@ -41,7 +47,9 @@ public sealed class Parser
 
     private SqlParseException Error(string message) => new(message, Current.Position);
 
-    // select_stmt := SELECT select_list FROM table_ref (WHERE expr)? (LIMIT NUMBER)? SEMICOLON? EOF
+    // select_stmt := SELECT select_list FROM table_ref (JOIN table_ref ON col = col)*
+    //                (WHERE expr)? (GROUP BY col_list)? (HAVING expr)?
+    //                (ORDER BY order_item_list)? (LIMIT NUMBER)? SEMICOLON? EOF
     private SelectStatement ParseSelectStatement()
     {
         Expect(TokenType.Select);
@@ -49,8 +57,38 @@ public sealed class Parser
         Expect(TokenType.From);
         var from = ParseTableRef();
 
+        var joins = new List<JoinClause>();
+        while (Match(TokenType.Join))
+        {
+            var table = ParseTableRef();
+            Expect(TokenType.On);
+            var left = ParseColumnRef();
+            Expect(TokenType.Eq);
+            var right = ParseColumnRef();
+            joins.Add(new JoinClause(table, left, right));
+        }
+
         Expr? where = null;
         if (Match(TokenType.Where)) where = ParseOr();
+
+        var groupBy = new List<ColumnRefExpr>();
+        if (Match(TokenType.Group))
+        {
+            Expect(TokenType.By);
+            groupBy.Add(ParseColumnRef());
+            while (Match(TokenType.Comma)) groupBy.Add(ParseColumnRef());
+        }
+
+        Expr? having = null;
+        if (Match(TokenType.Having)) having = ParseOr();
+
+        var orderBy = new List<OrderByItem>();
+        if (Match(TokenType.Order))
+        {
+            Expect(TokenType.By);
+            orderBy.Add(ParseOrderByItem());
+            while (Match(TokenType.Comma)) orderBy.Add(ParseOrderByItem());
+        }
 
         int? limit = null;
         if (Match(TokenType.Limit)) limit = int.Parse(Expect(TokenType.Number).Text, CultureInfo.InvariantCulture);
@@ -58,15 +96,16 @@ public sealed class Parser
         Match(TokenType.Semicolon);
         Expect(TokenType.Eof);
 
-        return new SelectStatement(columns, from, where, limit);
+        return new SelectStatement(columns, from, joins, where, groupBy, having, orderBy, limit);
     }
 
     private List<SelectItem> ParseSelectList()
     {
         var items = new List<SelectItem>();
-        if (Match(TokenType.Star))
+        if (Current.Type == TokenType.Star)
         {
-            items.Add(new SelectItem(IsStar: true, ColumnName: null, Alias: null));
+            Advance();
+            items.Add(new SelectItem(IsStar: true, Expression: null, Alias: null));
             return items;
         }
 
@@ -77,10 +116,19 @@ public sealed class Parser
 
     private SelectItem ParseSelectItem()
     {
-        var name = Expect(TokenType.Identifier).Text;
+        var expr = IsAggregateCallStart() ? ParseAggregateCall() : (Expr)ParseColumnRef();
         string? alias = null;
         if (Match(TokenType.As)) alias = Expect(TokenType.Identifier).Text;
-        return new SelectItem(IsStar: false, ColumnName: name, Alias: alias);
+        return new SelectItem(IsStar: false, expr, alias);
+    }
+
+    private OrderByItem ParseOrderByItem()
+    {
+        var column = ParseColumnRef();
+        var descending = false;
+        if (Match(TokenType.Desc)) descending = true;
+        else Match(TokenType.Asc);
+        return new OrderByItem(column, descending);
     }
 
     private TableRef ParseTableRef()
@@ -90,6 +138,30 @@ public sealed class Parser
         if (Match(TokenType.As)) alias = Expect(TokenType.Identifier).Text;
         else if (Current.Type == TokenType.Identifier) alias = Advance().Text;
         return new TableRef(name, alias);
+    }
+
+    private bool IsAggregateCallStart() =>
+        Current.Type == TokenType.Identifier
+        && AggregateFunctionNames.Contains(Current.Text)
+        && PeekToken().Type == TokenType.LParen;
+
+    // agg_call := ('COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX') LPAREN (STAR | column_ref) RPAREN
+    private AggregateExpr ParseAggregateCall()
+    {
+        var funcToken = Advance();
+        var func = Enum.Parse<AggregateFunc>(funcToken.Text, ignoreCase: true);
+        Expect(TokenType.LParen);
+
+        if (Match(TokenType.Star))
+        {
+            if (func != AggregateFunc.Count) throw Error($"only COUNT supports '*', not {func.ToString().ToUpperInvariant()}");
+            Expect(TokenType.RParen);
+            return new AggregateExpr(func, Argument: null, IsCountStar: true);
+        }
+
+        var arg = ParseColumnRef();
+        Expect(TokenType.RParen);
+        return new AggregateExpr(func, arg, IsCountStar: false);
     }
 
     // or_expr := and_expr (OR and_expr)*
@@ -158,7 +230,7 @@ public sealed class Parser
         var op = TryParseComparisonOp();
         if (op is { } comparisonOp) return new ComparisonExpr(left, comparisonOp, ParseOperand());
 
-        return left; // bare BOOL-typed operand, e.g. `WHERE is_active`
+        return left; // bare BOOL-typed operand, e.g. `WHERE is_active`, or `HAVING SUM(x) ...` handled above
     }
 
     private ComparisonOp? TryParseComparisonOp()
@@ -177,7 +249,7 @@ public sealed class Parser
         return op;
     }
 
-    // operand := NUMBER | STRING | TRUE | FALSE | column_ref
+    // operand := NUMBER | STRING | TRUE | FALSE | agg_call | column_ref
     private Expr ParseOperand()
     {
         var token = Current;
@@ -198,7 +270,7 @@ public sealed class Parser
                 Advance();
                 return new LiteralExpr(SqlValue.Bool(false));
             case TokenType.Identifier:
-                return ParseColumnRef();
+                return IsAggregateCallStart() ? ParseAggregateCall() : ParseColumnRef();
             default:
                 throw Error($"expected literal or column reference but found {token.Type} ('{token.Text}')");
         }

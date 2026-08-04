@@ -19,6 +19,14 @@ public sealed class Lexer
         ["AS"] = TokenType.As,
         ["TRUE"] = TokenType.True,
         ["FALSE"] = TokenType.False,
+        ["JOIN"] = TokenType.Join,
+        ["ON"] = TokenType.On,
+        ["GROUP"] = TokenType.Group,
+        ["BY"] = TokenType.By,
+        ["HAVING"] = TokenType.Having,
+        ["ORDER"] = TokenType.Order,
+        ["ASC"] = TokenType.Asc,
+        ["DESC"] = TokenType.Desc,
     };
 
     private readonly string _text;

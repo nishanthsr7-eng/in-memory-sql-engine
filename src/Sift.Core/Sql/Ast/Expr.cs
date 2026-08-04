@@ -30,3 +30,17 @@ public sealed record BetweenExpr(Expr Value, Expr Low, Expr High) : Expr;
 public sealed record InExpr(Expr Value, IReadOnlyList<Expr> Items) : Expr;
 
 public sealed record IsNullExpr(Expr Operand, bool Negated) : Expr;
+
+public enum AggregateFunc { Count, Sum, Avg, Min, Max }
+
+/// <summary>
+/// AGG(col) or COUNT(*). Not evaluated by <see cref="Sift.Core.Execution.Evaluator"/> directly —
+/// HashAggregate computes it, then names its output column <see cref="CanonicalName"/> so a
+/// HAVING clause referencing the same call can resolve it as an ordinary column lookup.
+/// </summary>
+public sealed record AggregateExpr(AggregateFunc Func, ColumnRefExpr? Argument, bool IsCountStar) : Expr
+{
+    public string CanonicalName => IsCountStar ? "COUNT(*)" : $"{Func.ToString().ToUpperInvariant()}({Argument!.ColumnName})";
+
+    public override string ToString() => CanonicalName;
+}

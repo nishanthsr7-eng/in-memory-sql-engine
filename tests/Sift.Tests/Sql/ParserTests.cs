@@ -25,9 +25,9 @@ public class ParserTests
         var stmt = Parser.ParseSelect("SELECT brand AS b, units_sold FROM fmcg_sales f");
 
         Assert.Equal(2, stmt.Columns.Count);
-        Assert.Equal("brand", stmt.Columns[0].ColumnName);
+        Assert.Equal("brand", Assert.IsType<ColumnRefExpr>(stmt.Columns[0].Expression).ColumnName);
         Assert.Equal("b", stmt.Columns[0].Alias);
-        Assert.Equal("units_sold", stmt.Columns[1].ColumnName);
+        Assert.Equal("units_sold", Assert.IsType<ColumnRefExpr>(stmt.Columns[1].Expression).ColumnName);
         Assert.Null(stmt.Columns[1].Alias);
         Assert.Equal("f", stmt.From.Alias);
     }
@@ -99,5 +99,91 @@ public class ParserTests
         Assert.Throws<SqlParseException>(() => Parser.ParseSelect("SELECT FROM t"));
         Assert.Throws<SqlParseException>(() => Parser.ParseSelect("SELECT * t"));
         Assert.Throws<SqlParseException>(() => Parser.ParseSelect("SELECT * FROM"));
+    }
+
+    [Fact]
+    public void ParsesJoinWithOnClause()
+    {
+        var stmt = Parser.ParseSelect(
+            "SELECT * FROM fmcg_sales s JOIN brands b ON s.brand = b.brand");
+
+        Assert.Single(stmt.Joins);
+        var join = stmt.Joins[0];
+        Assert.Equal("brands", join.Table.Name);
+        Assert.Equal("b", join.Table.Alias);
+        Assert.Equal(("s", "brand"), (join.LeftColumn.Qualifier, join.LeftColumn.ColumnName));
+        Assert.Equal(("b", "brand"), (join.RightColumn.Qualifier, join.RightColumn.ColumnName));
+    }
+
+    [Fact]
+    public void ParsesAggregateWithAlias()
+    {
+        var stmt = Parser.ParseSelect("SELECT brand, SUM(units_sold) AS total FROM t GROUP BY brand");
+
+        Assert.Equal("brand", Assert.IsType<ColumnRefExpr>(stmt.Columns[0].Expression).ColumnName);
+        var agg = Assert.IsType<AggregateExpr>(stmt.Columns[1].Expression);
+        Assert.Equal(AggregateFunc.Sum, agg.Func);
+        Assert.Equal("units_sold", agg.Argument!.ColumnName);
+        Assert.Equal("total", stmt.Columns[1].Alias);
+
+        Assert.Single(stmt.GroupBy);
+        Assert.Equal("brand", stmt.GroupBy[0].ColumnName);
+    }
+
+    [Fact]
+    public void ParsesCountStar()
+    {
+        var stmt = Parser.ParseSelect("SELECT COUNT(*) FROM t");
+        var agg = Assert.IsType<AggregateExpr>(stmt.Columns[0].Expression);
+        Assert.True(agg.IsCountStar);
+        Assert.Equal(AggregateFunc.Count, agg.Func);
+        Assert.Equal("COUNT(*)", agg.CanonicalName);
+    }
+
+    [Fact]
+    public void RejectsStarForNonCountAggregate()
+    {
+        Assert.Throws<SqlParseException>(() => Parser.ParseSelect("SELECT SUM(*) FROM t"));
+    }
+
+    [Fact]
+    public void ParsesHavingWithAggregate()
+    {
+        var stmt = Parser.ParseSelect(
+            "SELECT brand, SUM(units_sold) AS total FROM t GROUP BY brand HAVING SUM(units_sold) > 100");
+
+        var cmp = Assert.IsType<ComparisonExpr>(stmt.Having);
+        var agg = Assert.IsType<AggregateExpr>(cmp.Left);
+        Assert.Equal("SUM(units_sold)", agg.CanonicalName);
+    }
+
+    [Fact]
+    public void ParsesOrderByWithDirection()
+    {
+        var stmt = Parser.ParseSelect("SELECT * FROM t ORDER BY units_sold DESC, brand ASC");
+
+        Assert.Equal(2, stmt.OrderBy.Count);
+        Assert.Equal("units_sold", stmt.OrderBy[0].Column.ColumnName);
+        Assert.True(stmt.OrderBy[0].Descending);
+        Assert.Equal("brand", stmt.OrderBy[1].Column.ColumnName);
+        Assert.False(stmt.OrderBy[1].Descending);
+    }
+
+    [Fact]
+    public void ParsesFullPipeline()
+    {
+        var stmt = Parser.ParseSelect(
+            "SELECT region, COUNT(*) AS n FROM fmcg_sales " +
+            "WHERE promotion_flag = 1 " +
+            "GROUP BY region " +
+            "HAVING COUNT(*) > 10 " +
+            "ORDER BY n DESC " +
+            "LIMIT 5");
+
+        Assert.NotNull(stmt.Where);
+        Assert.Single(stmt.GroupBy);
+        Assert.NotNull(stmt.Having);
+        Assert.Single(stmt.OrderBy);
+        Assert.Equal(5, stmt.Limit);
     }
 }

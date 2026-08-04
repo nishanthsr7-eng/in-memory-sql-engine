@@ -17,6 +17,9 @@ public static class Evaluator
         {
             ColumnRefExpr colRef => row[schema.IndexOf(colRef.ColumnName)],
             LiteralExpr lit => lit.Value,
+            // Already computed by HashAggregate, whose output column is named by canonical
+            // name — a HAVING clause repeating the same aggregate call is just a lookup by then.
+            AggregateExpr agg => row[schema.IndexOf(agg.CanonicalName)],
             _ => throw new InvalidOperationException($"'{expr}' is not a scalar expression")
         };
     }

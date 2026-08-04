@@ -1,22 +1,26 @@
 using System.Diagnostics;
 using Sift.Cli;
 using Sift.Core.Catalog;
-using Sift.Core.Execution;
+using Sift.Core.Planning;
 using Sift.Core.Sql;
 
 var repoRoot = FindRepoRoot();
-var dataPath = Path.Combine(repoRoot, "data", "fmcg_sales.csv");
+var dataDir = Path.Combine(repoRoot, "data");
 
 Console.WriteLine("Sift — in-memory SQL query engine");
-Console.WriteLine($"loading {dataPath} ...");
 
-var loadStopwatch = Stopwatch.StartNew();
 var catalog = new Catalog();
-catalog.AddTable(CsvLoader.Load(dataPath, "fmcg_sales"));
-loadStopwatch.Stop();
+foreach (var csvPath in Directory.EnumerateFiles(dataDir, "*.csv").OrderBy(p => p))
+{
+    var tableName = Path.GetFileNameWithoutExtension(csvPath);
+    var loadStopwatch = Stopwatch.StartNew();
+    catalog.AddTable(CsvLoader.Load(csvPath, tableName));
+    loadStopwatch.Stop();
 
-var loaded = catalog.GetTable("fmcg_sales");
-Console.WriteLine($"loaded '{loaded.Name}': {loaded.RowCount:N0} rows, {loaded.Schema.Columns.Count} columns ({loadStopwatch.ElapsedMilliseconds} ms)");
+    var table = catalog.GetTable(tableName);
+    Console.WriteLine($"loaded '{table.Name}': {table.RowCount:N0} rows, {table.Schema.Columns.Count} columns ({loadStopwatch.ElapsedMilliseconds} ms)");
+}
+
 Console.WriteLine("enter a SQL query, or .exit to quit");
 Console.WriteLine();
 
@@ -32,12 +36,14 @@ while (true)
     if (input is ".exit" or ".quit") break;
     if (input == ".tables")
     {
-        Console.WriteLine(loaded.Name);
+        foreach (var name in catalog.TableNames) Console.WriteLine(name);
         continue;
     }
     if (input.StartsWith(".schema", StringComparison.OrdinalIgnoreCase))
     {
-        PrintSchema(loaded.Schema);
+        var tableName = input[".schema".Length..].Trim();
+        if (catalog.TryGetTable(tableName, out var table)) PrintSchema(table.Schema);
+        else Console.WriteLine($"unknown table '{tableName}' — try .tables");
         continue;
     }
 
@@ -45,11 +51,11 @@ while (true)
     {
         var stopwatch = Stopwatch.StartNew();
         var stmt = Parser.ParseSelect(input);
-        var result = NaiveExecutor.Execute(stmt, catalog);
-        var rows = result.Rows.ToList();
+        var plan = Planner.Plan(stmt, catalog);
+        var rows = plan.Execute().ToList();
         stopwatch.Stop();
 
-        ResultPrinter.Print(result.OutputSchema, rows);
+        ResultPrinter.Print(plan.OutputSchema, rows);
         Console.WriteLine($"({rows.Count:N0} row{(rows.Count == 1 ? "" : "s")} in {stopwatch.ElapsedMilliseconds} ms)");
     }
     catch (SqlParseException ex)
