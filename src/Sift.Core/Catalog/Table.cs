@@ -6,12 +6,14 @@ public sealed class Table
     public string Name { get; }
     public Schema Schema { get; }
     public IReadOnlyList<Row> Rows { get; }
+    public Statistics Statistics { get; }
 
     public Table(string name, Schema schema, IReadOnlyList<Row> rows)
     {
         Name = name;
         Schema = schema;
         Rows = rows;
+        Statistics = Statistics.Collect(schema, rows);
     }
 
     public int RowCount => Rows.Count;
