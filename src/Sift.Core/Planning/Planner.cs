@@ -1,21 +1,27 @@
 using Sift.Core.Catalog;
 using Sift.Core.Execution;
+using Sift.Core.Indexing;
+using Sift.Core.Planning.Rules;
 using Sift.Core.Sql.Ast;
 using Sift.Core.Values;
 
 namespace Sift.Core.Planning;
 
 /// <summary>
-/// Translates a parsed SELECT into a logical plan, then compiles that into an executable
-/// Operator tree — the "physical plan" for Phase 2. There's no cost-based choice yet (Phase 3
-/// adds SeqScan-vs-IndexScan and predicate pushdown); every logical node maps to exactly one
-/// physical strategy today, so a separate PhysicalPlan IR would just mirror Operator with no
-/// alternatives to represent — it earns its keep once there's a choice to make.
+/// Translates a parsed SELECT into a logical plan, rewrites it (predicate pushdown), then
+/// compiles the result into an executable Operator tree. The one real choice — index scan vs.
+/// sequential scan — is made where a Filter sits directly over a Scan, by comparing
+/// <see cref="CostModel"/> estimates; every other logical node still maps to exactly one
+/// physical strategy, so a separate PhysicalPlan IR would mostly mirror Operator with nothing
+/// to represent — it can earn its keep once there's a second axis of choice (e.g. join order).
 /// </summary>
 public static class Planner
 {
-    public static Operator Plan(SelectStatement stmt, Catalog.Catalog catalog) =>
-        Compile(BuildLogicalPlan(stmt), catalog);
+    public static Operator Plan(SelectStatement stmt, Catalog.Catalog catalog)
+    {
+        var logical = PredicatePushdown.Apply(BuildLogicalPlan(stmt), catalog);
+        return Compile(logical, catalog);
+    }
 
     public static LogicalPlan BuildLogicalPlan(SelectStatement stmt)
     {
@@ -102,6 +108,9 @@ public static class Planner
                 var rightIndex = right.OutputSchema.IndexOf(join.Clause.RightColumn.ColumnName);
                 return new HashJoin(left, right, leftIndex, rightIndex);
 
+            case LogicalFilter { Input: LogicalScan scan } filter:
+                return CompileScanWithFilter(scan, filter.Predicate, catalog);
+
             case LogicalFilter filter:
                 var filterChild = Compile(filter.Input, catalog);
                 return new Filter(filterChild, new ExprPredicate(filter.Predicate, filterChild.OutputSchema));
@@ -129,6 +138,105 @@ public static class Planner
                 throw new InvalidOperationException($"unreachable logical plan node: {plan}");
         }
     }
+
+    private readonly record struct IndexCandidate(Expr Conjunct, IIndex Index, IndexCondition Condition, double Cost);
+
+    /// <summary>
+    /// The cost-based decision (PLAN.md §3, §11 differentiator #1): split the WHERE clause into
+    /// conjuncts, find the cheapest one an index can answer, and only use it if it actually
+    /// beats a sequential scan — a predicate matching most of the table (e.g. a boolean flag)
+    /// correctly loses to SeqScan even when an index on that column exists, because the index's
+    /// per-row random access adds up past what one sequential sweep costs.
+    /// </summary>
+    private static Operator CompileScanWithFilter(LogicalScan scan, Expr predicate, Catalog.Catalog catalog)
+    {
+        var table = catalog.GetTable(scan.Table.Name);
+        var conjuncts = ExprAnalysis.SplitConjuncts(predicate);
+
+        IndexCandidate? best = null;
+        foreach (var conjunct in conjuncts)
+        {
+            var candidate = TryBuildIndexCandidate(conjunct, table, catalog);
+            if (candidate is { } c && (best is not { } b || c.Cost < b.Cost)) best = c;
+        }
+
+        var seqCost = CostModel.SeqScanCost(table.RowCount);
+
+        Operator baseOp;
+        Expr? residual;
+        if (best is { } chosen && chosen.Cost < seqCost)
+        {
+            baseOp = new IndexScan(table, chosen.Index, chosen.Condition);
+            var rest = conjuncts.Where(c => !ReferenceEquals(c, chosen.Conjunct)).ToList();
+            residual = rest.Count == 0 ? null : ExprAnalysis.Combine(rest);
+        }
+        else
+        {
+            baseOp = new SeqScan(table);
+            residual = predicate;
+        }
+
+        return residual is null ? baseOp : new Filter(baseOp, new ExprPredicate(residual, baseOp.OutputSchema));
+    }
+
+    private static IndexCandidate? TryBuildIndexCandidate(Expr conjunct, Table table, Catalog.Catalog catalog)
+    {
+        switch (conjunct)
+        {
+            case ComparisonExpr { Left: ColumnRefExpr col, Right: LiteralExpr lit } cmp:
+                return BuildComparisonCandidate(conjunct, col.ColumnName, cmp.Op, lit.Value, table, catalog);
+
+            // literal-on-the-left form (`5 = price`) — flip the operator so it reads column-relative
+            case ComparisonExpr { Left: LiteralExpr lit, Right: ColumnRefExpr col } cmp:
+                return BuildComparisonCandidate(conjunct, col.ColumnName, Flip(cmp.Op), lit.Value, table, catalog);
+
+            case BetweenExpr { Value: ColumnRefExpr col, Low: LiteralExpr lo, High: LiteralExpr hi }:
+                if (!catalog.TryGetIndex(table.Name, col.ColumnName, out var betweenIndex) || !betweenIndex.SupportsRange) return null;
+                var betweenSelectivity = CostModel.DefaultRangeSelectivity;
+                var betweenCost = CostModel.IndexScanCost(table.RowCount, betweenSelectivity);
+                var betweenCondition = new IndexCondition.Range(lo.Value, true, hi.Value, true);
+                return new IndexCandidate(conjunct, betweenIndex, betweenCondition, betweenCost);
+
+            default:
+                return null; // IN / IS NULL / compound expressions — not index candidates, handled by the residual Filter
+        }
+    }
+
+    private static IndexCandidate? BuildComparisonCandidate(
+        Expr conjunct, string columnName, ComparisonOp op, SqlValue literal, Table table, Catalog.Catalog catalog)
+    {
+        if (op == ComparisonOp.NotEq) return null; // not expressible as a single index range
+        if (!catalog.TryGetIndex(table.Name, columnName, out var index)) return null;
+        if (op != ComparisonOp.Eq && !index.SupportsRange) return null;
+
+        if (op == ComparisonOp.Eq)
+        {
+            var selectivity = CostModel.EstimateSelectivity(op, table.Statistics.DistinctCount(columnName));
+            var cost = CostModel.IndexScanCost(table.RowCount, selectivity);
+            return new IndexCandidate(conjunct, index, new IndexCondition.Exact(literal), cost);
+        }
+
+        var rangeSelectivity = CostModel.EstimateSelectivity(op, table.Statistics.DistinctCount(columnName));
+        var rangeCost = CostModel.IndexScanCost(table.RowCount, rangeSelectivity);
+        var condition = op switch
+        {
+            ComparisonOp.Lt => new IndexCondition.Range(null, false, literal, false),
+            ComparisonOp.LtEq => new IndexCondition.Range(null, false, literal, true),
+            ComparisonOp.Gt => new IndexCondition.Range(literal, false, null, false),
+            ComparisonOp.GtEq => new IndexCondition.Range(literal, true, null, false),
+            _ => throw new InvalidOperationException($"unreachable: {op}")
+        };
+        return new IndexCandidate(conjunct, index, condition, rangeCost);
+    }
+
+    private static ComparisonOp Flip(ComparisonOp op) => op switch
+    {
+        ComparisonOp.Lt => ComparisonOp.Gt,
+        ComparisonOp.LtEq => ComparisonOp.GtEq,
+        ComparisonOp.Gt => ComparisonOp.Lt,
+        ComparisonOp.GtEq => ComparisonOp.LtEq,
+        var same => same // Eq / NotEq are symmetric
+    };
 
     private static AggregateSpec BuildAggregateSpec(AggregateExpr expr, Schema inputSchema)
     {

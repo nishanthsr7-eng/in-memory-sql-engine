@@ -10,6 +10,7 @@ public enum TokenType
     // keywords
     Select, From, Where, And, Or, Not, Between, In, Is, Null, Limit, As, True, False,
     Join, On, Group, By, Having, Order, Asc, Desc,
+    Create, Index, Using,
 
     // punctuation
     Comma, Star, LParen, RParen, Dot, Semicolon,

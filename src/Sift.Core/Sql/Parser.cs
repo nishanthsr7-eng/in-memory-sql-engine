@@ -25,6 +25,19 @@ public sealed class Parser
         return new Parser(tokens).ParseSelectStatement();
     }
 
+    /// <summary>Dispatches on the leading keyword: `SELECT ...` or `CREATE INDEX ...`.</summary>
+    public static Statement Parse(string sql)
+    {
+        var tokens = new Lexer(sql).Tokenize();
+        var parser = new Parser(tokens);
+        return parser.Current.Type switch
+        {
+            TokenType.Select => parser.ParseSelectStatement(),
+            TokenType.Create => parser.ParseCreateIndexStatement(),
+            _ => throw parser.Error($"expected SELECT or CREATE but found {parser.Current.Type} ('{parser.Current.Text}')")
+        };
+    }
+
     private Token Current => _tokens[_pos];
 
     private Token PeekToken(int ahead = 1) => _tokens[Math.Min(_pos + ahead, _tokens.Count - 1)];
@@ -97,6 +110,34 @@ public sealed class Parser
         Expect(TokenType.Eof);
 
         return new SelectStatement(columns, from, joins, where, groupBy, having, orderBy, limit);
+    }
+
+    // create_index_stmt := CREATE INDEX ON IDENTIFIER LPAREN IDENTIFIER RPAREN (USING (HASH|BTREE))? SEMICOLON? EOF
+    private CreateIndexStatement ParseCreateIndexStatement()
+    {
+        Expect(TokenType.Create);
+        Expect(TokenType.Index);
+        Expect(TokenType.On);
+        var table = Expect(TokenType.Identifier).Text;
+        Expect(TokenType.LParen);
+        var column = Expect(TokenType.Identifier).Text;
+        Expect(TokenType.RParen);
+
+        var kind = IndexTypeHint.BTree;
+        if (Match(TokenType.Using))
+        {
+            var kindToken = Expect(TokenType.Identifier).Text;
+            kind = kindToken.ToUpperInvariant() switch
+            {
+                "HASH" => IndexTypeHint.Hash,
+                "BTREE" => IndexTypeHint.BTree,
+                _ => throw Error($"unknown index type '{kindToken}' — expected HASH or BTREE")
+            };
+        }
+
+        Match(TokenType.Semicolon);
+        Expect(TokenType.Eof);
+        return new CreateIndexStatement(table, column, kind);
     }
 
     private List<SelectItem> ParseSelectList()

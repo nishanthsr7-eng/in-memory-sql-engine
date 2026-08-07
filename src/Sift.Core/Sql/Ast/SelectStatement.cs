@@ -1,5 +1,7 @@
 namespace Sift.Core.Sql.Ast;
 
+public abstract record Statement;
+
 /// <summary>A single SELECT list entry: `*`, a column, or an aggregate call, with an optional alias.</summary>
 public sealed record SelectItem(bool IsStar, Expr? Expression, string? Alias)
 {
@@ -31,4 +33,9 @@ public sealed record SelectStatement(
     IReadOnlyList<ColumnRefExpr> GroupBy,
     Expr? Having,
     IReadOnlyList<OrderByItem> OrderBy,
-    int? Limit);
+    int? Limit) : Statement;
+
+public enum IndexTypeHint { BTree, Hash }
+
+/// <summary>`CREATE INDEX ON table(col) [USING (HASH | BTREE)]` — no index name; one index per (table, column).</summary>
+public sealed record CreateIndexStatement(string TableName, string ColumnName, IndexTypeHint Kind) : Statement;

@@ -27,6 +27,9 @@ public sealed class Lexer
         ["ORDER"] = TokenType.Order,
         ["ASC"] = TokenType.Asc,
         ["DESC"] = TokenType.Desc,
+        ["CREATE"] = TokenType.Create,
+        ["INDEX"] = TokenType.Index,
+        ["USING"] = TokenType.Using,
     };
 
     private readonly string _text;

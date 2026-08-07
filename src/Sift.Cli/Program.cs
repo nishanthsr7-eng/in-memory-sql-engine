@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using Sift.Cli;
 using Sift.Core.Catalog;
+using Sift.Core.Indexing;
 using Sift.Core.Planning;
 using Sift.Core.Sql;
+using Sift.Core.Sql.Ast;
 
 var repoRoot = FindRepoRoot();
 var dataDir = Path.Combine(repoRoot, "data");
@@ -47,16 +49,36 @@ while (true)
         continue;
     }
 
+    var explain = input.StartsWith("EXPLAIN ", StringComparison.OrdinalIgnoreCase);
+    if (explain) input = input["EXPLAIN ".Length..].Trim();
+
     try
     {
         var stopwatch = Stopwatch.StartNew();
-        var stmt = Parser.ParseSelect(input);
-        var plan = Planner.Plan(stmt, catalog);
-        var rows = plan.Execute().ToList();
-        stopwatch.Stop();
+        var stmt = Parser.Parse(input);
 
-        ResultPrinter.Print(plan.OutputSchema, rows);
-        Console.WriteLine($"({rows.Count:N0} row{(rows.Count == 1 ? "" : "s")} in {stopwatch.ElapsedMilliseconds} ms)");
+        switch (stmt)
+        {
+            case CreateIndexStatement createIndex:
+                var kind = createIndex.Kind == IndexTypeHint.Hash ? IndexKind.Hash : IndexKind.BPlusTree;
+                catalog.CreateIndex(createIndex.TableName, createIndex.ColumnName, kind);
+                stopwatch.Stop();
+                Console.WriteLine($"created {kind} index on {createIndex.TableName}({createIndex.ColumnName}) ({stopwatch.ElapsedMilliseconds} ms)");
+                break;
+
+            case SelectStatement select:
+                var plan = Planner.Plan(select, catalog);
+                if (explain)
+                {
+                    Console.WriteLine(plan.Explain(0));
+                    break;
+                }
+                var rows = plan.Execute().ToList();
+                stopwatch.Stop();
+                ResultPrinter.Print(plan.OutputSchema, rows);
+                Console.WriteLine($"({rows.Count:N0} row{(rows.Count == 1 ? "" : "s")} in {stopwatch.ElapsedMilliseconds} ms)");
+                break;
+        }
     }
     catch (SqlParseException ex)
     {
