@@ -1,4 +1,5 @@
 using Sift.Core.Catalog;
+using Sift.Core.Planning;
 using Sift.Core.Values;
 
 namespace Sift.Core.Execution;
@@ -19,6 +20,8 @@ public sealed class Sort : Operator
     {
         _child = child;
         _keys = keys;
+        EstimatedRowCount = child.EstimatedRowCount;
+        EstimatedCost = child.EstimatedCost + CostModel.SortCost(child.EstimatedRowCount);
     }
 
     public override Schema OutputSchema => _child.OutputSchema;
@@ -51,6 +54,6 @@ public sealed class Sort : Operator
     public override string Explain(int indent)
     {
         var desc = string.Join(", ", _keys.Select(k => $"{OutputSchema.Columns[k.ColumnIndex].Name}{(k.Descending ? " DESC" : "")}"));
-        return $"{Ind(indent)}Sort ({desc})\n{_child.Explain(indent + 1)}";
+        return $"{Ind(indent)}Sort ({desc}){CostSuffix()}\n{_child.Explain(indent + 1)}";
     }
 }

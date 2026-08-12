@@ -1,4 +1,5 @@
 using Sift.Core.Catalog;
+using Sift.Core.Planning;
 using Sift.Core.Values;
 
 namespace Sift.Core.Execution;
@@ -16,13 +17,15 @@ public sealed class HashJoin : Operator
     private readonly int _rightColumnIndex;
     private readonly Schema _outputSchema;
 
-    public HashJoin(Operator left, Operator right, int leftColumnIndex, int rightColumnIndex)
+    public HashJoin(Operator left, Operator right, int leftColumnIndex, int rightColumnIndex, double? estimatedRowCount = null)
     {
         _left = left;
         _right = right;
         _leftColumnIndex = leftColumnIndex;
         _rightColumnIndex = rightColumnIndex;
         _outputSchema = JoinSupport.CombineSchemas(left.OutputSchema, right.OutputSchema);
+        EstimatedRowCount = estimatedRowCount ?? Math.Max(left.EstimatedRowCount, right.EstimatedRowCount);
+        EstimatedCost = left.EstimatedCost + right.EstimatedCost + CostModel.HashJoinCost(left.EstimatedRowCount, right.EstimatedRowCount);
     }
 
     public override Schema OutputSchema => _outputSchema;
@@ -49,5 +52,5 @@ public sealed class HashJoin : Operator
     }
 
     public override string Explain(int indent) =>
-        $"{Ind(indent)}HashJoin\n{_left.Explain(indent + 1)}\n{_right.Explain(indent + 1)}";
+        $"{Ind(indent)}HashJoin{CostSuffix()}\n{_left.Explain(indent + 1)}\n{_right.Explain(indent + 1)}";
 }

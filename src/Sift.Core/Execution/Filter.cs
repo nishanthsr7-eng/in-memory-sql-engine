@@ -1,4 +1,5 @@
 using Sift.Core.Catalog;
+using Sift.Core.Planning;
 using Sift.Core.Values;
 
 namespace Sift.Core.Execution;
@@ -12,6 +13,10 @@ public sealed class Filter : Operator
     {
         _child = child;
         _predicate = predicate;
+        // No per-predicate selectivity estimate here — only the chosen index conjunct (Phase 3)
+        // gets a real one; everything else, including HAVING, uses the flat default.
+        EstimatedRowCount = child.EstimatedRowCount * CostModel.DefaultFilterSelectivity;
+        EstimatedCost = child.EstimatedCost + child.EstimatedRowCount * CostModel.FilterCostPerRow;
     }
 
     public override Schema OutputSchema => _child.OutputSchema;
@@ -23,5 +28,5 @@ public sealed class Filter : Operator
                 yield return row;
     }
 
-    public override string Explain(int indent) => $"{Ind(indent)}Filter\n{_child.Explain(indent + 1)}";
+    public override string Explain(int indent) => $"{Ind(indent)}Filter{CostSuffix()}\n{_child.Explain(indent + 1)}";
 }

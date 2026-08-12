@@ -106,7 +106,12 @@ public static class Planner
                 var right = Compile(join.Right, catalog);
                 var leftIndex = left.OutputSchema.IndexOf(join.Clause.LeftColumn.ColumnName);
                 var rightIndex = right.OutputSchema.IndexOf(join.Clause.RightColumn.ColumnName);
-                return new HashJoin(left, right, leftIndex, rightIndex);
+
+                var leftDistinct = FindBaseTable(join.Left, catalog)?.Statistics.DistinctCount(join.Clause.LeftColumn.ColumnName) ?? 1;
+                var rightDistinct = FindBaseTable(join.Right, catalog)?.Statistics.DistinctCount(join.Clause.RightColumn.ColumnName) ?? 1;
+                var joinEstRows = CostModel.EstimateJoinRowCount(left.EstimatedRowCount, right.EstimatedRowCount, leftDistinct, rightDistinct);
+
+                return new HashJoin(left, right, leftIndex, rightIndex, joinEstRows);
 
             case LogicalFilter { Input: LogicalScan scan } filter:
                 return CompileScanWithFilter(scan, filter.Predicate, catalog);
@@ -139,7 +144,17 @@ public static class Planner
         }
     }
 
-    private readonly record struct IndexCandidate(Expr Conjunct, IIndex Index, IndexCondition Condition, double Cost);
+    /// <summary>Descends through pushed-down Filters to the Scan they sit on — used only to
+    /// look up base-table Statistics for join cardinality estimates (an approximation: it
+    /// ignores that those Filters may have already narrowed the real distinct count).</summary>
+    private static Table? FindBaseTable(LogicalPlan plan, Catalog.Catalog catalog) => plan switch
+    {
+        LogicalScan scan => catalog.GetTable(scan.Table.Name),
+        LogicalFilter filter => FindBaseTable(filter.Input, catalog),
+        _ => null
+    };
+
+    private readonly record struct IndexCandidate(Expr Conjunct, IIndex Index, IndexCondition Condition, double EstimatedRows, double Cost);
 
     /// <summary>
     /// The cost-based decision (PLAN.md §3, §11 differentiator #1): split the WHERE clause into
@@ -166,7 +181,7 @@ public static class Planner
         Expr? residual;
         if (best is { } chosen && chosen.Cost < seqCost)
         {
-            baseOp = new IndexScan(table, chosen.Index, chosen.Condition);
+            baseOp = new IndexScan(table, chosen.Index, chosen.Condition, chosen.EstimatedRows, chosen.Cost);
             var rest = conjuncts.Where(c => !ReferenceEquals(c, chosen.Conjunct)).ToList();
             residual = rest.Count == 0 ? null : ExprAnalysis.Combine(rest);
         }
@@ -195,7 +210,7 @@ public static class Planner
                 var betweenSelectivity = CostModel.DefaultRangeSelectivity;
                 var betweenCost = CostModel.IndexScanCost(table.RowCount, betweenSelectivity);
                 var betweenCondition = new IndexCondition.Range(lo.Value, true, hi.Value, true);
-                return new IndexCandidate(conjunct, betweenIndex, betweenCondition, betweenCost);
+                return new IndexCandidate(conjunct, betweenIndex, betweenCondition, table.RowCount * betweenSelectivity, betweenCost);
 
             default:
                 return null; // IN / IS NULL / compound expressions — not index candidates, handled by the residual Filter
@@ -213,7 +228,7 @@ public static class Planner
         {
             var selectivity = CostModel.EstimateSelectivity(op, table.Statistics.DistinctCount(columnName));
             var cost = CostModel.IndexScanCost(table.RowCount, selectivity);
-            return new IndexCandidate(conjunct, index, new IndexCondition.Exact(literal), cost);
+            return new IndexCandidate(conjunct, index, new IndexCondition.Exact(literal), table.RowCount * selectivity, cost);
         }
 
         var rangeSelectivity = CostModel.EstimateSelectivity(op, table.Statistics.DistinctCount(columnName));
@@ -226,7 +241,7 @@ public static class Planner
             ComparisonOp.GtEq => new IndexCondition.Range(literal, true, null, false),
             _ => throw new InvalidOperationException($"unreachable: {op}")
         };
-        return new IndexCandidate(conjunct, index, condition, rangeCost);
+        return new IndexCandidate(conjunct, index, condition, table.RowCount * rangeSelectivity, rangeCost);
     }
 
     private static ComparisonOp Flip(ComparisonOp op) => op switch

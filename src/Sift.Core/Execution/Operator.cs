@@ -12,9 +12,16 @@ public abstract class Operator
 {
     public abstract Schema OutputSchema { get; }
 
+    /// <summary>Planner-computed cost/row estimates (PLAN.md §7, §9) — not measured at execution
+    /// time, so <see cref="Explain"/> can show them without running the query.</summary>
+    public double EstimatedCost { get; protected init; }
+    public double EstimatedRowCount { get; protected init; }
+
     public abstract IEnumerable<Row> Execute();
 
     public abstract string Explain(int indent);
 
     protected static string Ind(int indent) => new(' ', indent * 2);
+
+    protected string CostSuffix() => $"  (cost={EstimatedCost:F1}, est. rows={EstimatedRowCount:F0})";
 }

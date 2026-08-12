@@ -17,6 +17,22 @@ public static class CostModel
     public const double TreeTraversalCostPerLevel = 2.0;
     public const double DefaultRangeSelectivity = 0.3;
 
+    /// <summary>Residual filters (after the chosen index conjunct, or with no index at all) get no
+    /// per-predicate selectivity estimate — just this flat default. Documented approximation.</summary>
+    public const double DefaultFilterSelectivity = 0.5;
+    public const double FilterCostPerRow = 0.2;
+    public const double ProjectCostPerRow = 0.05;
+    public const double HashBuildOrProbeCostPerRow = 1.0;
+    public const double NestedLoopCostPerPair = 1.0;
+    public const double SortCostPerRowPerLevel = 0.5;
+    public const double HashAggregateCostPerRow = 1.5;
+
+    /// <summary>No GROUP BY columns → the aggregate has read the grouping cardinality
+    /// exactly (there's exactly one group). With GROUP BY columns, no histogram means no real
+    /// way to know how many distinct combinations exist without scanning — this flat fraction
+    /// of the input row count is a deliberately crude stand-in.</summary>
+    public const double DefaultGroupingFraction = 0.1;
+
     public static double SeqScanCost(int rowCount) => rowCount * SeqScanCostPerRow;
 
     public static double TreeTraversalCost(int rowCount) => TreeTraversalCostPerLevel * Math.Log2(Math.Max(rowCount, 2));
@@ -26,6 +42,22 @@ public static class CostModel
         var matchedRows = rowCount * selectivity;
         return TreeTraversalCost(rowCount) + matchedRows * RandomAccessCostPerRow;
     }
+
+    public static double HashJoinCost(double leftRows, double rightRows) => (leftRows + rightRows) * HashBuildOrProbeCostPerRow;
+
+    public static double NestedLoopJoinCost(double leftRows, double rightRows) => leftRows * rightRows * NestedLoopCostPerPair;
+
+    /// <summary>Standard containment-assumption join cardinality estimate: each row on the
+    /// larger side of distinctness finds roughly (other side's row count / that side's distinct
+    /// values) matches. Ignores that a filter upstream may have already narrowed the real
+    /// distinct count — an approximation flagged rather than silently assumed away.</summary>
+    public static double EstimateJoinRowCount(double leftRows, double rightRows, int leftDistinct, int rightDistinct)
+    {
+        var maxDistinct = Math.Max(Math.Max(leftDistinct, rightDistinct), 1);
+        return leftRows * rightRows / maxDistinct;
+    }
+
+    public static double SortCost(double rowCount) => rowCount * SortCostPerRowPerLevel * Math.Log2(Math.Max(rowCount, 2));
 
     /// <summary>
     /// Fraction of rows an operator is expected to match. `=` scales with how many distinct

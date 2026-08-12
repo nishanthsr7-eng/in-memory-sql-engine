@@ -1,4 +1,5 @@
 using Sift.Core.Catalog;
+using Sift.Core.Planning;
 using Sift.Core.Values;
 
 namespace Sift.Core.Execution;
@@ -16,13 +17,15 @@ public sealed class NestedLoopJoin : Operator
     private readonly int _rightColumnIndex;
     private readonly Schema _outputSchema;
 
-    public NestedLoopJoin(Operator left, Operator right, int leftColumnIndex, int rightColumnIndex)
+    public NestedLoopJoin(Operator left, Operator right, int leftColumnIndex, int rightColumnIndex, double? estimatedRowCount = null)
     {
         _left = left;
         _right = right;
         _leftColumnIndex = leftColumnIndex;
         _rightColumnIndex = rightColumnIndex;
         _outputSchema = JoinSupport.CombineSchemas(left.OutputSchema, right.OutputSchema);
+        EstimatedRowCount = estimatedRowCount ?? Math.Max(left.EstimatedRowCount, right.EstimatedRowCount);
+        EstimatedCost = left.EstimatedCost + right.EstimatedCost + CostModel.NestedLoopJoinCost(left.EstimatedRowCount, right.EstimatedRowCount);
     }
 
     public override Schema OutputSchema => _outputSchema;
@@ -43,5 +46,5 @@ public sealed class NestedLoopJoin : Operator
     }
 
     public override string Explain(int indent) =>
-        $"{Ind(indent)}NestedLoopJoin\n{_left.Explain(indent + 1)}\n{_right.Explain(indent + 1)}";
+        $"{Ind(indent)}NestedLoopJoin{CostSuffix()}\n{_left.Explain(indent + 1)}\n{_right.Explain(indent + 1)}";
 }

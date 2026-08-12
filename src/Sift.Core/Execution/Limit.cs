@@ -11,6 +11,10 @@ public sealed class Limit : Operator
     {
         _child = child;
         _count = count;
+        // Conservative upper bound: real (lazy) execution often does less work than this once
+        // the count is reached, but a static estimate can't see that short-circuit.
+        EstimatedRowCount = Math.Min(child.EstimatedRowCount, Math.Max(count, 0));
+        EstimatedCost = child.EstimatedCost;
     }
 
     public override Schema OutputSchema => _child.OutputSchema;
@@ -27,5 +31,5 @@ public sealed class Limit : Operator
         }
     }
 
-    public override string Explain(int indent) => $"{Ind(indent)}Limit {_count}\n{_child.Explain(indent + 1)}";
+    public override string Explain(int indent) => $"{Ind(indent)}Limit {_count}{CostSuffix()}\n{_child.Explain(indent + 1)}";
 }

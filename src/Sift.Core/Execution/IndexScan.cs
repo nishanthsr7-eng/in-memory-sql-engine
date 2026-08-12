@@ -18,11 +18,13 @@ public sealed class IndexScan : Operator
     private readonly IIndex _index;
     private readonly IndexCondition _condition;
 
-    public IndexScan(Table table, IIndex index, IndexCondition condition)
+    public IndexScan(Table table, IIndex index, IndexCondition condition, double estimatedRowCount, double estimatedCost)
     {
         _table = table;
         _index = index;
         _condition = condition;
+        EstimatedRowCount = estimatedRowCount;
+        EstimatedCost = estimatedCost;
     }
 
     public override Schema OutputSchema => _table.Schema;
@@ -46,6 +48,6 @@ public sealed class IndexScan : Operator
             IndexCondition.Range r => $"{r.Lo?.ToString() ?? "-inf"} <= {_index.ColumnName} <= {r.Hi?.ToString() ?? "+inf"}",
             _ => "?"
         };
-        return $"{Ind(indent)}IndexScan on {_table.Name} using {_index.Kind} index on {desc}";
+        return $"{Ind(indent)}IndexScan on {_table.Name} using {_index.Kind} index on {desc}{CostSuffix()}";
     }
 }

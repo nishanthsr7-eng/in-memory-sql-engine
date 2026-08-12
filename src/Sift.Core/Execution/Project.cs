@@ -1,4 +1,5 @@
 using Sift.Core.Catalog;
+using Sift.Core.Planning;
 using Sift.Core.Values;
 
 namespace Sift.Core.Execution;
@@ -15,6 +16,8 @@ public sealed class Project : Operator
         _child = child;
         _outputSchema = outputSchema;
         _sourceIndices = sourceIndices;
+        EstimatedRowCount = child.EstimatedRowCount; // projection never changes row count
+        EstimatedCost = child.EstimatedCost + child.EstimatedRowCount * CostModel.ProjectCostPerRow;
     }
 
     public override Schema OutputSchema => _outputSchema;
@@ -30,5 +33,5 @@ public sealed class Project : Operator
     }
 
     public override string Explain(int indent) =>
-        $"{Ind(indent)}Project ({string.Join(", ", _outputSchema.Columns.Select(c => c.Name))})\n{_child.Explain(indent + 1)}";
+        $"{Ind(indent)}Project ({string.Join(", ", _outputSchema.Columns.Select(c => c.Name))}){CostSuffix()}\n{_child.Explain(indent + 1)}";
 }

@@ -1,4 +1,5 @@
 using Sift.Core.Catalog;
+using Sift.Core.Planning;
 using Sift.Core.Sql.Ast;
 using Sift.Core.Values;
 
@@ -30,6 +31,11 @@ public sealed class HashAggregate : Operator
         for (var i = 0; i < groupByIndices.Length; i++) outputColumns[i] = childColumns[groupByIndices[i]];
         for (var i = 0; i < specs.Length; i++) outputColumns[groupByIndices.Length + i] = new Column(specs[i].OutputName, specs[i].OutputType);
         _outputSchema = new Schema(outputColumns);
+
+        EstimatedRowCount = groupByIndices.Length == 0
+            ? 1
+            : Math.Max(1, child.EstimatedRowCount * CostModel.DefaultGroupingFraction);
+        EstimatedCost = child.EstimatedCost + child.EstimatedRowCount * CostModel.HashAggregateCostPerRow;
     }
 
     public override Schema OutputSchema => _outputSchema;
@@ -91,7 +97,7 @@ public sealed class HashAggregate : Operator
     {
         var aggs = string.Join(", ", _specs.Select(s => s.OutputName));
         var groupBy = _groupByIndices.Length == 0 ? "" : $" GROUP BY ({string.Join(", ", _groupByIndices.Select(i => _child.OutputSchema.Columns[i].Name))})";
-        return $"{Ind(indent)}HashAggregate ({aggs}){groupBy}\n{_child.Explain(indent + 1)}";
+        return $"{Ind(indent)}HashAggregate ({aggs}){groupBy}{CostSuffix()}\n{_child.Explain(indent + 1)}";
     }
 
     private interface IAccumulator
