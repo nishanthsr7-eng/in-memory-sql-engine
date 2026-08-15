@@ -1,0 +1,97 @@
+<svg viewBox="0 0 720 640" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="720" height="640" fill="#ffffff"/>
+  <text x="360" y="28" text-anchor="middle" font-size="17" font-weight="600" fill="#1a1a1a">Sift — query pipeline</text>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
+    </marker>
+  </defs>
+
+  <!-- SQL text -->
+  <rect x="270" y="46" width="180" height="34" rx="5" fill="#f5f5f5" stroke="#999"/>
+  <text x="360" y="68" text-anchor="middle" font-size="12" fill="#333">SQL text</text>
+  <line x1="360" y1="80" x2="360" y2="102" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Parser -->
+  <rect x="240" y="104" width="240" height="46" rx="5" fill="#eef3fb" stroke="#2b6cb0"/>
+  <text x="360" y="123" text-anchor="middle" font-size="13" font-weight="600" fill="#1a3a5c">Lexer + Parser</text>
+  <text x="360" y="140" text-anchor="middle" font-size="11" fill="#555">recursive-descent → AST</text>
+  <line x1="360" y1="150" x2="360" y2="172" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Logical Plan -->
+  <rect x="220" y="174" width="280" height="46" rx="5" fill="#eef3fb" stroke="#2b6cb0"/>
+  <text x="360" y="193" text-anchor="middle" font-size="13" font-weight="600" fill="#1a3a5c">Logical Plan</text>
+  <text x="360" y="210" text-anchor="middle" font-size="11" fill="#555">Scan / Join / Filter / Aggregate / Sort / Project / Limit</text>
+  <line x1="360" y1="220" x2="360" y2="242" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Predicate pushdown rewrite, off to the side feeding back in -->
+  <rect x="520" y="174" width="170" height="46" rx="5" fill="#fdf3e3" stroke="#b8860b"/>
+  <text x="605" y="193" text-anchor="middle" font-size="12" font-weight="600" fill="#6b5006">PredicatePushdown</text>
+  <text x="605" y="209" text-anchor="middle" font-size="10.5" fill="#6b5006">qualifier-aware rewrite</text>
+  <line x1="520" y1="197" x2="500" y2="197" stroke="#b8860b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Planner / cost model -->
+  <rect x="180" y="244" width="360" height="60" rx="5" fill="#eef3fb" stroke="#2b6cb0"/>
+  <text x="360" y="266" text-anchor="middle" font-size="13" font-weight="600" fill="#1a3a5c">Planner + CostModel</text>
+  <text x="360" y="283" text-anchor="middle" font-size="11" fill="#555">SeqScan vs IndexScan cost from table Statistics</text>
+  <text x="360" y="297" text-anchor="middle" font-size="10.5" fill="#777">the one real choice — everything else is 1:1 translation</text>
+
+  <!-- Catalog / Statistics / Indexing feeding the planner -->
+  <rect x="20" y="244" width="140" height="60" rx="5" fill="#f3eefb" stroke="#7a4fb0"/>
+  <text x="90" y="266" text-anchor="middle" font-size="12" font-weight="600" fill="#4a2d6b">Catalog</text>
+  <text x="90" y="282" text-anchor="middle" font-size="10.5" fill="#4a2d6b">Table + Schema</text>
+  <text x="90" y="296" text-anchor="middle" font-size="10.5" fill="#4a2d6b">Statistics, indexes</text>
+  <line x1="160" y1="274" x2="180" y2="274" stroke="#7a4fb0" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="560" y="244" width="140" height="60" rx="5" fill="#f3eefb" stroke="#7a4fb0"/>
+  <text x="630" y="266" text-anchor="middle" font-size="12" font-weight="600" fill="#4a2d6b">Indexing</text>
+  <text x="630" y="282" text-anchor="middle" font-size="10.5" fill="#4a2d6b">B+ tree (range)</text>
+  <text x="630" y="296" text-anchor="middle" font-size="10.5" fill="#4a2d6b">Hash (exact-match)</text>
+  <line x1="560" y1="274" x2="540" y2="274" stroke="#7a4fb0" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <line x1="360" y1="304" x2="360" y2="326" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Physical plan = operator tree -->
+  <rect x="150" y="328" width="420" height="46" rx="5" fill="#eaf6ec" stroke="#2f8f4e"/>
+  <text x="360" y="347" text-anchor="middle" font-size="13" font-weight="600" fill="#1c5c31">Physical Plan = Operator tree</text>
+  <text x="360" y="364" text-anchor="middle" font-size="11" fill="#2f6b3f">the compiled plan IS what executes — no separate IR</text>
+  <line x1="360" y1="374" x2="360" y2="396" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Execution operators, small boxes -->
+  <text x="360" y="412" text-anchor="middle" font-size="12" font-weight="600" fill="#1c5c31">Execution — pull-based (Volcano), IEnumerable&lt;Row&gt; via yield return</text>
+
+  <g font-size="11" fill="#1c5c31">
+    <rect x="30"  y="424" width="98" height="30" rx="4" fill="#eaf6ec" stroke="#2f8f4e"/>
+    <text x="79" y="443" text-anchor="middle">SeqScan</text>
+    <rect x="136" y="424" width="98" height="30" rx="4" fill="#eaf6ec" stroke="#2f8f4e"/>
+    <text x="185" y="443" text-anchor="middle">IndexScan</text>
+    <rect x="242" y="424" width="98" height="30" rx="4" fill="#eaf6ec" stroke="#2f8f4e"/>
+    <text x="291" y="443" text-anchor="middle">Filter</text>
+    <rect x="348" y="424" width="98" height="30" rx="4" fill="#eaf6ec" stroke="#2f8f4e"/>
+    <text x="397" y="443" text-anchor="middle">HashJoin</text>
+    <rect x="454" y="424" width="98" height="30" rx="4" fill="#eaf6ec" stroke="#2f8f4e"/>
+    <text x="503" y="443" text-anchor="middle">NestedLoopJoin</text>
+    <rect x="560" y="424" width="98" height="30" rx="4" fill="#eaf6ec" stroke="#2f8f4e"/>
+    <text x="609" y="443" text-anchor="middle">HashAggregate</text>
+
+    <rect x="90"  y="462" width="98" height="30" rx="4" fill="#eaf6ec" stroke="#2f8f4e"/>
+    <text x="139" y="481" text-anchor="middle">Project</text>
+    <rect x="196" y="462" width="98" height="30" rx="4" fill="#eaf6ec" stroke="#2f8f4e"/>
+    <text x="245" y="481" text-anchor="middle">Sort</text>
+    <rect x="302" y="462" width="98" height="30" rx="4" fill="#eaf6ec" stroke="#2f8f4e"/>
+    <text x="351" y="481" text-anchor="middle">Limit</text>
+    <rect x="408" y="462" width="140" height="30" rx="4" fill="#eaf6ec" stroke="#2f8f4e"/>
+    <text x="478" y="481" text-anchor="middle">ParallelHashAggregate</text>
+  </g>
+
+  <line x1="360" y1="500" x2="360" y2="522" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="270" y="524" width="180" height="34" rx="5" fill="#f5f5f5" stroke="#999"/>
+  <text x="360" y="546" text-anchor="middle" font-size="12" fill="#333">Result rows</text>
+
+  <!-- Proof strip -->
+  <rect x="20" y="580" width="680" height="46" rx="5" fill="#fdf3e3" stroke="#b8860b"/>
+  <text x="360" y="599" text-anchor="middle" font-size="12" font-weight="600" fill="#6b5006">Proof, not just a build</text>
+  <text x="360" y="616" text-anchor="middle" font-size="11" fill="#6b5006">EXPLAIN (real cost/rows) · SQLite differential oracle (500-query fuzzer) · BenchmarkDotNet (real measured numbers)</text>
+</svg>

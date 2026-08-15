@@ -107,7 +107,15 @@ public sealed class DifferentialFixture : IDisposable
     private static readonly Dictionary<SqlType, string> SqliteColumnType = new()
     {
         [SqlType.Int] = "INTEGER",
-        [SqlType.Decimal] = "TEXT", // no native decimal in SQLite — TEXT preserves the exact value; SUM/AVG still coerce it numerically
+        // REAL, not TEXT — audit finding: a TEXT-affinity column compares against a numeric
+        // literal by converting the *literal* to text (not the column to numeric), so `price_unit
+        // BETWEEN -1.5 AND 10.25` on a TEXT column silently became a lexicographic string
+        // comparison ("9.0" > "10.25" as strings, since '9' > '1'), undercounting matches by two
+        // orders of magnitude — a bug in this harness, not in Sift, caught only because a plain
+        // COUNT(*) (no LIMIT/ORDER BY ambiguity possible) made a wrong answer impossible to miss.
+        // REAL trades exact decimal storage for correct numeric comparison; CanonicalizeCell's
+        // rounding already absorbs the resulting float-vs-decimal formatting differences.
+        [SqlType.Decimal] = "REAL",
         [SqlType.Text] = "TEXT",
         [SqlType.Date] = "TEXT",
         [SqlType.Bool] = "INTEGER",
@@ -148,7 +156,7 @@ public sealed class DifferentialFixture : IDisposable
         return value.Type switch
         {
             SqlType.Int => value.AsInt,
-            SqlType.Decimal => value.AsDecimal.ToString(CultureInfo.InvariantCulture),
+            SqlType.Decimal => (double)value.AsDecimal,
             SqlType.Text => value.AsText,
             SqlType.Date => value.AsDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             SqlType.Bool => value.AsBool ? 1L : 0L,

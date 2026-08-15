@@ -132,8 +132,14 @@ public readonly struct SqlValue : IEquatable<SqlValue>, IComparable<SqlValue>
         if (IsNull) return HashCode.Combine(Type, "NULL");
         return Type switch
         {
-            SqlType.Int => _intValue.GetHashCode(),
-            SqlType.Decimal => _decimalValue.GetHashCode(),
+            // Int and Decimal must hash identically for equal values (Equals treats Int(5) and
+            // Decimal(5.0) as equal via NumericValue) — both funnel through the same decimal
+            // conversion here so that invariant holds. Hashing _intValue and _decimalValue
+            // separately would violate the Equals/GetHashCode contract: `long.GetHashCode()` and
+            // `decimal.GetHashCode()` disagree for negative values even when the values are
+            // numerically equal (e.g. -3L vs -3.0m), which would let equal keys land in
+            // different Dictionary/HashSet buckets (HashIndex, HashJoin's build side).
+            SqlType.Int or SqlType.Decimal => NumericValue.GetHashCode(),
             SqlType.Text => _textValue!.GetHashCode(StringComparison.Ordinal),
             SqlType.Date => _dateValue.GetHashCode(),
             SqlType.Bool => _boolValue.GetHashCode(),

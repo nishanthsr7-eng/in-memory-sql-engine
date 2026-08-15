@@ -1,0 +1,73 @@
+<svg viewBox="0 0 640 420" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="640" height="420" fill="#ffffff"/>
+
+  <!-- title -->
+  <text x="320" y="24" text-anchor="middle" font-size="16" font-weight="600" fill="#1a1a1a">SeqScan vs IndexScan: the crossover point</text>
+  <text x="320" y="42" text-anchor="middle" font-size="12" fill="#555">190,000-row synthetic table, equality predicate, varying selectivity (log-log)</text>
+
+  <!-- plot area border -->
+  <rect x="80" y="20" width="480" height="320" fill="none" stroke="#ccc" stroke-width="1"/>
+
+  <!-- horizontal gridlines + y labels: 1000, 100, 10, 1, 0.1 us (y = 340 - 320*(log10(us)+1)/4) -->
+  <g stroke="#e5e5e5" stroke-width="1">
+    <line x1="80" y1="20"  x2="560" y2="20"/>
+    <line x1="80" y1="100" x2="560" y2="100"/>
+    <line x1="80" y1="180" x2="560" y2="180"/>
+    <line x1="80" y1="260" x2="560" y2="260"/>
+    <line x1="80" y1="340" x2="560" y2="340"/>
+  </g>
+  <g font-size="11" fill="#555" text-anchor="end">
+    <text x="74" y="24">1000 µs</text>
+    <text x="74" y="104">100 µs</text>
+    <text x="74" y="184">10 µs</text>
+    <text x="74" y="264">1 µs</text>
+    <text x="74" y="344">0.1 µs</text>
+  </g>
+
+  <!-- vertical gridlines + x labels: selectivity 0.001, 0.01, 0.1, 1.0 -->
+  <g stroke="#e5e5e5" stroke-width="1">
+    <line x1="80"  y1="20" x2="80"  y2="340"/>
+    <line x1="240" y1="20" x2="240" y2="340"/>
+    <line x1="400" y1="20" x2="400" y2="340"/>
+    <line x1="560" y1="20" x2="560" y2="340"/>
+  </g>
+  <g font-size="11" fill="#555" text-anchor="middle">
+    <text x="80"  y="356">0.001</text>
+    <text x="240" y="356">0.01</text>
+    <text x="400" y="356">0.1</text>
+    <text x="560" y="356">1.0</text>
+  </g>
+  <text x="320" y="378" text-anchor="middle" font-size="12" fill="#333">Selectivity (fraction of rows matched, log scale)</text>
+  <text x="20" y="200" text-anchor="middle" font-size="12" fill="#333" transform="rotate(-90 20 200)">Mean time (µs, log scale)</text>
+
+  <!-- SeqScan: roughly flat ~240-340us regardless of selectivity (touches every row either way) -->
+  <polyline points="80,67.8 240,64.5 400,57.5 560,69.4" fill="none" stroke="#dc5a3b" stroke-width="2.5"/>
+  <g fill="#dc5a3b">
+    <circle cx="80" cy="67.8" r="4"/>
+    <circle cx="240" cy="64.5" r="4"/>
+    <circle cx="400" cy="57.5" r="4"/>
+    <circle cx="560" cy="69.4" r="4"/>
+  </g>
+
+  <!-- IndexScan: falls ~10x for every 10x drop in selectivity, meets SeqScan near selectivity=1.0 -->
+  <polyline points="80,303.3 240,228.3 400,148.1 560,67.8" fill="none" stroke="#2b6cb0" stroke-width="2.5"/>
+  <g fill="#2b6cb0">
+    <circle cx="80" cy="303.3" r="4"/>
+    <circle cx="240" cy="228.3" r="4"/>
+    <circle cx="400" cy="148.1" r="4"/>
+    <circle cx="560" cy="67.8" r="4"/>
+  </g>
+
+  <!-- crossover annotation: the two lines meet right around selectivity = 1.0 (the whole table matches) -->
+  <circle cx="560" cy="68.6" r="7" fill="none" stroke="#333" stroke-width="1.5" stroke-dasharray="2,2"/>
+  <text x="500" y="90" text-anchor="end" font-size="11" fill="#333">crossover: index scan stops helping</text>
+  <text x="500" y="103" text-anchor="end" font-size="11" fill="#333">once selectivity approaches 1.0</text>
+
+  <!-- legend -->
+  <g font-size="12">
+    <line x1="360" y1="400" x2="384" y2="400" stroke="#dc5a3b" stroke-width="2.5"/>
+    <text x="390" y="404" fill="#333">SeqScan</text>
+    <line x1="480" y1="400" x2="504" y2="400" stroke="#2b6cb0" stroke-width="2.5"/>
+    <text x="510" y="404" fill="#333">IndexScan</text>
+  </g>
+</svg>

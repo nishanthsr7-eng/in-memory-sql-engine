@@ -32,6 +32,34 @@ public class ParserTests
         Assert.Equal("f", stmt.From.Alias);
     }
 
+    [Theory]
+    [InlineData("-5", -5L)]
+    [InlineData("-1", -1L)]
+    [InlineData("0", 0L)]
+    public void ParsesNegativeIntegerLiterals(string literal, long expected)
+    {
+        var stmt = Parser.ParseSelect($"SELECT * FROM t WHERE x = {literal}");
+        var cmp = Assert.IsType<ComparisonExpr>(stmt.Where);
+        var lit = Assert.IsType<LiteralExpr>(cmp.Right);
+        Assert.Equal(expected, lit.Value.AsInt);
+    }
+
+    [Fact]
+    public void ParsesNegativeDecimalLiteral()
+    {
+        var stmt = Parser.ParseSelect("SELECT * FROM t WHERE price BETWEEN -1.5 AND 10.25");
+        var between = Assert.IsType<BetweenExpr>(stmt.Where);
+        Assert.Equal(-1.5m, Assert.IsType<LiteralExpr>(between.Low).Value.AsDecimal);
+        Assert.Equal(10.25m, Assert.IsType<LiteralExpr>(between.High).Value.AsDecimal);
+    }
+
+    [Fact]
+    public void BareMinusWithoutAnOperand_StillErrors_NoArithmeticSupported()
+    {
+        // '-' is only ever a literal's sign (PLAN.md §4 — no arithmetic expressions in scope).
+        Assert.Throws<SqlParseException>(() => Parser.ParseSelect("SELECT * FROM t WHERE units_sold - 1 = 4"));
+    }
+
     [Fact]
     public void ParsesEqualityPredicate()
     {

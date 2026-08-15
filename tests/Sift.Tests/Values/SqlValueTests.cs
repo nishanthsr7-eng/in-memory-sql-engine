@@ -45,6 +45,37 @@ public class SqlValueTests
         Assert.Equal(SqlBool.False, a.EqualsSql(b));
     }
 
+    /// <summary>
+    /// The Equals/GetHashCode contract: since Equals treats Int(5) and Decimal(5.0) as equal
+    /// (cross-type numeric equality), GetHashCode must agree for every case Equals does — not
+    /// just the ones where the default per-field hash happens to line up. `long.GetHashCode()`
+    /// and `decimal.GetHashCode()` disagree for negative values even when numerically equal,
+    /// which is exactly the case this regression-tests (found during audit, see git history).
+    /// </summary>
+    [Theory]
+    [InlineData(5, 5.0)]
+    [InlineData(0, 0.0)]
+    [InlineData(-3, -3.0)]
+    [InlineData(-1, -1.0)]
+    [InlineData(1000000, 1000000.0)]
+    public void IntAndEqualDecimal_HashIdentically(long intValue, double decimalAsDouble)
+    {
+        var intVal = SqlValue.Int(intValue);
+        var decVal = SqlValue.Decimal((decimal)decimalAsDouble);
+
+        Assert.Equal(SqlBool.True, intVal.EqualsSql(decVal));
+        Assert.True(intVal.Equals(decVal));
+        Assert.Equal(intVal.GetHashCode(), decVal.GetHashCode());
+    }
+
+    [Fact]
+    public void DictionaryLookup_FindsEqualValueAcrossIntAndDecimal()
+    {
+        var dict = new Dictionary<SqlValue, string> { [SqlValue.Int(-3)] = "found" };
+        Assert.True(dict.TryGetValue(SqlValue.Decimal(-3.0m), out var value));
+        Assert.Equal("found", value);
+    }
+
     [Fact]
     public void CompareTo_SortsNullsLast()
     {

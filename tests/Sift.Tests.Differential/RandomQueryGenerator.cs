@@ -58,18 +58,21 @@ public sealed class RandomQueryGenerator
         sb.Append(RandomColumnList(_sales));
         sb.Append(" FROM fmcg_sales");
 
-        var hasWhere = _rng.Next(3) != 0;
-        if (hasWhere) sb.Append(" WHERE ").Append(RandomPredicate(_sales, _salesSamples, qualifier: null));
+        // WHERE is mandatory here (not just likely) to bound comparison cost — without it, the
+        // no-LIMIT policy below means every unfiltered case would compare all 190,757 rows.
+        sb.Append(" WHERE ").Append(RandomPredicate(_sales, _salesSamples, qualifier: null));
 
-        // ORDER BY and LIMIT are deliberately never combined here: with a non-unique sort key
-        // (nothing in this table is a primary key), which rows land exactly at the cutoff is
-        // undefined by the SQL standard whenever the boundary falls inside a tie — both engines
-        // can be correct and still disagree on that boundary. Each clause is still exercised
-        // independently (LIMIT alone; ORDER BY alone, verified as a full resort). ORDER BY only
-        // fires when WHERE already bounds the row count, so a 500-query run doesn't spend most
-        // of its time resorting the full 190k-row table.
-        if (hasWhere && _rng.Next(2) == 0) sb.Append(" ORDER BY ").Append(RandomColumnName(_sales)).Append(_rng.Next(2) == 0 ? " DESC" : " ASC");
-        else sb.Append(" LIMIT ").Append(_rng.Next(1, 200));
+        // No bare LIMIT here — audit finding: LIMIT without an ORDER BY that fully determines
+        // row order is NOT safely differential-testable against a second engine at all, not just
+        // in the tie-at-the-boundary case originally guarded against below. Proven empirically:
+        // `WHERE price_unit BETWEEN -1.5 AND 10.25 LIMIT 10` (a predicate matching essentially
+        // the whole table) returned Sift's literal first 10 CSV rows but a *different* 10 from
+        // SQLite, which does not preserve insertion/rowid order under LIMIT the way this
+        // generator used to assume. ORDER BY alone (no LIMIT) stays safe: AssertEquivalent
+        // compares as a sorted set, so the *order* SQLite/Sift return it in never matters — only
+        // that both compute the same full result, which a resort always does deterministically.
+        if (_rng.Next(2) == 0)
+            sb.Append(" ORDER BY ").Append(RandomColumnName(_sales)).Append(_rng.Next(2) == 0 ? " DESC" : " ASC");
 
         return sb.ToString();
     }
@@ -116,8 +119,9 @@ public sealed class RandomQueryGenerator
 
         var sb = new System.Text.StringBuilder($"SELECT {columns} FROM fmcg_sales s JOIN brands b ON s.brand = b.brand");
 
-        if (_rng.Next(3) != 0) sb.Append(" WHERE ").Append(RandomPredicate(_sales, _salesSamples, "s"));
-        if (_rng.Next(2) == 0) sb.Append(" LIMIT ").Append(_rng.Next(1, 100));
+        // WHERE mandatory (bounds comparison cost) and no LIMIT — same reasoning as SimpleSelect:
+        // a bare LIMIT on a join result isn't safely comparable across two different engines.
+        sb.Append(" WHERE ").Append(RandomPredicate(_sales, _salesSamples, "s"));
 
         return sb.ToString();
     }
@@ -166,6 +170,11 @@ public sealed class RandomQueryGenerator
 
         if (column.Type is SqlType.Int or SqlType.Decimal)
         {
+            // Every real value in this dataset happens to be non-negative, so without this the
+            // negative-literal lexer path (`-5`) would never be exercised by the fuzzer at all —
+            // exactly the coverage gap that let a real parser bug ship once already.
+            if (_rng.Next(5) == 0) value = Negate(value);
+
             return _rng.Next(6) switch
             {
                 0 => $"{qualifiedName} = {Literal(value)}",
@@ -185,6 +194,13 @@ public sealed class RandomQueryGenerator
             _ => $"{qualifiedName} IS NOT NULL",
         };
     }
+
+    private static SqlValue Negate(SqlValue value) => value.Type switch
+    {
+        SqlType.Int => SqlValue.Int(-value.AsInt),
+        SqlType.Decimal => SqlValue.Decimal(-value.AsDecimal),
+        _ => value
+    };
 
     private static string Literal(SqlValue value) => value.Type switch
     {
