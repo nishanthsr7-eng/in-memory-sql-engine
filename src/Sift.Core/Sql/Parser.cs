@@ -5,8 +5,8 @@ using Sift.Core.Values;
 namespace Sift.Core.Sql;
 
 /// <summary>
-/// Recursive-descent parser for the in-scope grammar (see PLAN.md §4): a single SELECT with
-/// JOIN / WHERE / GROUP BY / HAVING / ORDER BY / LIMIT. Deliberately minimal — see PLAN.md §2
+/// Recursive-descent parser for the in-scope grammar (see docs/design.md §1): a single SELECT with
+/// JOIN / WHERE / GROUP BY / HAVING / ORDER BY / LIMIT. Deliberately minimal — see docs/design.md §1
 /// on why parsing isn't the star here.
 /// </summary>
 public sealed class Parser

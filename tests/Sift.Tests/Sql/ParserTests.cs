@@ -56,7 +56,7 @@ public class ParserTests
     [Fact]
     public void BareMinusWithoutAnOperand_StillErrors_NoArithmeticSupported()
     {
-        // '-' is only ever a literal's sign (PLAN.md §4 — no arithmetic expressions in scope).
+        // '-' is only ever a literal's sign (docs/design.md §1 — no arithmetic expressions in scope).
         Assert.Throws<SqlParseException>(() => Parser.ParseSelect("SELECT * FROM t WHERE units_sold - 1 = 4"));
     }
 

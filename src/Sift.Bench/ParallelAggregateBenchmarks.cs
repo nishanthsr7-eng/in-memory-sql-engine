@@ -7,7 +7,7 @@ using Sift.Core.Values;
 namespace Sift.Bench;
 
 /// <summary>
-/// The speedup curve PLAN.md Phase 5 asks for: `SELECT brand, SUM(units_sold) FROM fmcg_sales
+/// The parallel speedup curve (docs/design.md §8): `SELECT brand, SUM(units_sold) FROM fmcg_sales
 /// GROUP BY brand` (190,757 rows, 14 groups) at 1/2/4/8 threads. Also runs the sequential
 /// `HashAggregate` as a fixed baseline, since "DegreeOfParallelism=1" on the parallel path still
 /// pays partitioning/merge overhead a genuinely single-threaded implementation doesn't.

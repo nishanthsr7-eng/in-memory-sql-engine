@@ -6,7 +6,7 @@
 
 **Lexer + Parser** (`src/Sift.Core/Sql/`) — hand-rolled recursive descent, no generator, no
 regex. Turns SQL text into an AST (`Sql/Ast/`). Deliberately the least interesting layer by
-design (PLAN.md §2): the grammar is a fixed, documented subset of ANSI SQL (§4), not an attempt
+design ([design.md §1](design.md#1-scope-and-parsing)): the grammar is a fixed, documented subset of ANSI SQL, not an attempt
 at full compatibility, so the parser stays small while the planner and execution engine — the
 actual point of this project — get the bulk of the effort.
 

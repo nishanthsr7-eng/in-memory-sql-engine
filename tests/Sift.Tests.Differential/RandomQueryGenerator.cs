@@ -5,7 +5,7 @@ using Sift.Core.Values;
 namespace Sift.Tests.Differential;
 
 /// <summary>
-/// Generates random-but-valid SQL within Sift's own grammar (PLAN.md §4) against the real
+/// Generates random-but-valid SQL within Sift's own grammar (docs/design.md §1) against the real
 /// fmcg_sales/brands tables. Literal values are sampled from actual data so predicates produce
 /// real matches instead of mostly-empty results — an all-empty fuzz suite proves nothing.
 /// </summary>

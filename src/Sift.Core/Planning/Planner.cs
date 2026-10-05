@@ -157,7 +157,7 @@ public static class Planner
     private readonly record struct IndexCandidate(Expr Conjunct, IIndex Index, IndexCondition Condition, double EstimatedRows, double Cost);
 
     /// <summary>
-    /// The cost-based decision (PLAN.md §3, §11 differentiator #1): split the WHERE clause into
+    /// The cost-based decision (docs/design.md §5): split the WHERE clause into
     /// conjuncts, find the cheapest one an index can answer, and only use it if it actually
     /// beats a sequential scan — a predicate matching most of the table (e.g. a boolean flag)
     /// correctly loses to SeqScan even when an index on that column exists, because the index's

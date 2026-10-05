@@ -6,7 +6,7 @@ namespace Sift.Core.Indexing;
 /// <summary>
 /// A B+ tree secondary index: unique keys route through internal nodes, each leaf key holds a
 /// posting list of matching row ids, and leaves are linked for sequential range scans. Insert
-/// and search only — deletion rebalancing is out of scope for a read-only engine (PLAN.md §4).
+/// and search only — deletion rebalancing is out of scope for a read-only engine (docs/design.md §1).
 ///
 /// Node splitting is hand-written, not delegated to <c>SortedDictionary</c>: fan-out (order) is
 /// tunable, and leaf linking — the thing that makes range scans fast — isn't something the BCL

@@ -63,7 +63,7 @@ public sealed class Lexer
         if (char.IsLetter(ch) || ch == '_') return ReadIdentifierOrKeyword(start);
         if (char.IsDigit(ch)) return ReadNumber(start);
         // '-' is only ever a literal's sign here, never subtraction — there's no arithmetic in
-        // this grammar (PLAN.md §4), so a '-' immediately before a digit is unambiguous.
+        // this grammar (docs/design.md §1), so a '-' immediately before a digit is unambiguous.
         if (ch == '-' && char.IsDigit(Peek())) return ReadNumber(start);
         if (ch == '\'') return ReadString(start);
 

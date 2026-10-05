@@ -6,7 +6,7 @@ using Sift.Core.Values;
 namespace Sift.Bench;
 
 /// <summary>
-/// The headline benchmark (PLAN.md §9): SeqScan vs IndexScan cost as a function of selectivity.
+/// The headline benchmark (docs/design.md §5): SeqScan vs IndexScan cost as a function of selectivity.
 /// A synthetic table with a controllable number of distinct "bucket" values stands in for a
 /// real column, so selectivity (1/DistinctValues) can be swept across four orders of magnitude
 /// on the same 190k-row shape as fmcg_sales — real timings, not the CostModel's estimates.

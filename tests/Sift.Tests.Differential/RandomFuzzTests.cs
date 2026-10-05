@@ -1,7 +1,7 @@
 namespace Sift.Tests.Differential;
 
 /// <summary>
-/// The fuzz half of the test oracle story (PLAN.md §10): 500+ randomly generated queries run
+/// The fuzz half of the test oracle story (docs/design.md §7): 500+ randomly generated queries run
 /// against both engines every test run. A fixed seed keeps failures reproducible — if this ever
 /// goes red, the seed and the printed query are enough to reproduce and minimize the failure by hand.
 /// </summary>

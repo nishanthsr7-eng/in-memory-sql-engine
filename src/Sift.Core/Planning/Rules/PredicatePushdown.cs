@@ -5,7 +5,7 @@ namespace Sift.Core.Planning.Rules;
 /// <summary>
 /// Splits a WHERE clause into its AND-conjuncts and moves each one as close to the base table
 /// scan(s) it references as possible — specifically, below a JOIN instead of above it, so a
-/// join only ever processes rows that already passed their own table's filters (PLAN.md §3, §6).
+/// join only ever processes rows that already passed their own table's filters (docs/design.md §5).
 /// A conjunct referencing columns from both sides of a join (or that can't be attributed to one
 /// side) stays above the join, unchanged.
 /// </summary>

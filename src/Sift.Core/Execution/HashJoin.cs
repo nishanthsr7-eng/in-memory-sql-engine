@@ -7,7 +7,7 @@ namespace Sift.Core.Execution;
 /// <summary>
 /// O(n+m) equi-join: builds a hash table on the right side, then probes it once per left row.
 /// Always builds on the right — join reordering (picking the smaller side to build) is out of
-/// scope (PLAN.md §4); callers should put the smaller table on the right of JOIN.
+/// scope (docs/design.md §1); callers should put the smaller table on the right of JOIN.
 /// </summary>
 public sealed class HashJoin : Operator
 {

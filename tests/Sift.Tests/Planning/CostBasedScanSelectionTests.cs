@@ -8,7 +8,7 @@ using Xunit;
 namespace Sift.Tests.Planning;
 
 /// <summary>
-/// Phase 3's headline behavior (PLAN.md §3 "Done when"): the planner picks SeqScan over its own
+/// The planner's headline behavior (docs/design.md §5): the planner picks SeqScan over its own
 /// index for a low-selectivity predicate, and IndexScan for a high-selectivity one — verified
 /// end to end through real parsed SQL and a real Catalog, not just the CostModel formulas.
 /// </summary>

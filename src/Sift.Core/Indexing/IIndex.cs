@@ -7,7 +7,7 @@ public enum IndexKind { Hash, BPlusTree }
 /// <summary>
 /// A secondary index: column value → row ids. Deliberately capability-aware — a hash index
 /// can't answer a range query, and the planner has to know that up front rather than build a
-/// physical plan it can't execute (see <see cref="SupportsRange"/>, PLAN.md §7).
+/// physical plan it can't execute (see <see cref="SupportsRange"/>, docs/design.md §4).
 /// </summary>
 public interface IIndex
 {

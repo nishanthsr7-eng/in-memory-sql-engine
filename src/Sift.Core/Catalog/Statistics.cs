@@ -5,7 +5,7 @@ namespace Sift.Core.Catalog;
 /// <summary>
 /// Per-table stats collected once at load time — row count and a per-column distinct-value
 /// count. That's all the cost model needs: selectivity for `=` is `1 / distinctValues`
-/// (PLAN.md §6). Real systems keep histograms for skewed data; this is the deliberately
+/// (docs/design.md §5). Real systems keep histograms for skewed data; this is the deliberately
 /// simple next step up from "assume everything is uniform."
 /// </summary>
 public sealed class Statistics

@@ -10,7 +10,7 @@ public sealed record AggregateSpec(AggregateFunc Func, int ArgumentColumnIndex, 
 /// <summary>
 /// GROUP BY + aggregates, computed with one hash-table pass: group key → running accumulators
 /// per aggregate. NULLs are excluded from every aggregate but COUNT(*), per SQL semantics
-/// (PLAN.md §8). A GROUP BY with zero input groups produces zero rows; a bare aggregate with no
+/// (docs/design.md §6). A GROUP BY with zero input groups produces zero rows; a bare aggregate with no
 /// GROUP BY over zero rows still produces exactly one row (e.g. COUNT(*) = 0).
 /// </summary>
 public sealed class HashAggregate : Operator

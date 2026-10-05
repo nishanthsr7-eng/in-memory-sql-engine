@@ -43,7 +43,7 @@ public sealed class Sort : Operator
         return 0;
     }
 
-    /// <summary>NULLs sort last regardless of ASC/DESC — a fixed, documented rule (PLAN.md §8).</summary>
+    /// <summary>NULLs sort last regardless of ASC/DESC — a fixed, documented rule (docs/design.md §6).</summary>
     private static int CompareValues(SqlValue a, SqlValue b, bool descending)
     {
         var cmp = a.CompareTo(b);

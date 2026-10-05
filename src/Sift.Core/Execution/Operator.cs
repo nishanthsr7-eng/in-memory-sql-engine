@@ -12,7 +12,7 @@ public abstract class Operator
 {
     public abstract Schema OutputSchema { get; }
 
-    /// <summary>Planner-computed cost/row estimates (PLAN.md §7, §9) — not measured at execution
+    /// <summary>Planner-computed cost/row estimates (docs/design.md §5) — not measured at execution
     /// time, so <see cref="Explain"/> can show them without running the query.</summary>
     public double EstimatedCost { get; protected init; }
     public double EstimatedRowCount { get; protected init; }

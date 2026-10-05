@@ -7,7 +7,7 @@ namespace Sift.Core.Execution;
 /// <summary>
 /// O(n·m) equi-join: materializes the right (inner) side once, then rescans it per left row.
 /// Wins over HashJoin only when one side is tiny — kept mainly as the benchmark baseline that
-/// makes HashJoin's O(n+m) actually mean something (PLAN.md §9).
+/// makes HashJoin's O(n+m) actually mean something (docs/design.md §3).
 /// </summary>
 public sealed class NestedLoopJoin : Operator
 {

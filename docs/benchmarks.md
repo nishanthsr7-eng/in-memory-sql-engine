@@ -30,8 +30,7 @@ This is the planner's own reasoning made visible: `SeqScan` costs about the same
 selectivity — it always touches every row — while `IndexScan` cost scales with the number of
 *matched* rows. At selectivity 1.0 (an equality predicate matching the whole table, e.g. a
 constant-valued column), the index provides no benefit and even loses slightly to a plain scan's
-better cache locality — exactly the case `CostModel` refuses to route to `IndexScan` (PLAN.md
-§3's `promotion_flag = 0` scenario). By selectivity 0.001 the index is three orders of magnitude
+better cache locality — exactly the case `CostModel` refuses to route to `IndexScan` (the `promotion_flag = 0` scenario in [design.md §5](design.md#5-cost-model-and-the-crossover)). By selectivity 0.001 the index is three orders of magnitude
 faster.
 
 ## B+ tree vs hash index, exact-match lookup
@@ -85,7 +84,7 @@ Pulling 10 rows through the operator tree vs. materializing the full 190,757-row
 | MaterializeThenTake (baseline) | 546,170 ns | 1,526,203 B |
 | LazyLimit | 65.7 ns | 176 B |
 
-**~8,300x faster, ~8,700x less allocated.** This is the laziness claim from PLAN.md §6 with a
+**~8,300x faster, ~8,700x less allocated.** This is the laziness claim from [design.md §3](design.md#3-execution-volcano-with-yield-return) with a
 number attached, not a vibe: `LazyLimit` only ever constructs the 10 rows it returns: the
 `yield return` chain from `Limit` down through `SeqScan` means downstream code stops pulling the
 instant the count is reached, and the C# iterator state machine never materializes the other

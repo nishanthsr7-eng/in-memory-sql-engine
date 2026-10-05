@@ -11,7 +11,7 @@ namespace Sift.Tests.Differential;
 /// <summary>
 /// Loads the same CSVs into Sift's Catalog and an in-memory SQLite database once per test run,
 /// then runs the same SQL text against both — SQLite is a test oracle here, never a dependency
-/// of the engine itself (PLAN.md §1, §10).
+/// of the engine itself (docs/design.md §7).
 /// </summary>
 public sealed class DifferentialFixture : IDisposable
 {

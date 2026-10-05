@@ -5,7 +5,7 @@ using Sift.Core.Values;
 namespace Sift.Core.Execution;
 
 /// <summary>
-/// Fused parallel scan + filter + partial aggregate (PLAN.md Phase 5). The table is split into
+/// Fused parallel scan + filter + partial aggregate (docs/design.md §8). The table is split into
 /// contiguous row-range partitions, one per worker; each partition builds its own local
 /// per-group accumulator dictionary with no shared mutable state and no locks, so there's
 /// nothing to synchronize until every partition has finished. The merge step — combining

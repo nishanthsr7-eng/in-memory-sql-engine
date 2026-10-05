@@ -4,7 +4,7 @@ A SQL query engine built from scratch in C#: a hand-written B+ tree index, a cos
 planner, and a pull-based (Volcano) execution model. No database libraries — SQLite is used
 only as a test oracle.
 
-See [PLAN.md](PLAN.md) for the full design and phase-by-phase build plan.
+Design notes (scope, execution model, cost model, NULL semantics, testing): [`docs/design.md`](docs/design.md).
 
 ## Highlights
 
@@ -37,7 +37,7 @@ See [PLAN.md](PLAN.md) for the full design and phase-by-phase build plan.
   targeted cases), BenchmarkDotNet suite with real measured numbers
 - [x] Phase 5 — parallel `GROUP BY`/aggregate execution, benchmarked at 1/2/4/8 threads
 
-Full checklist and design rationale for every phase: [PLAN.md](PLAN.md).
+Design rationale for every phase: [`docs/design.md`](docs/design.md).
 
 ## Architecture
 

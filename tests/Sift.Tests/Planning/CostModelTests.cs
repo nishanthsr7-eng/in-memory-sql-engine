@@ -20,7 +20,7 @@ public class CostModelTests
         Assert.Equal(CostModel.DefaultRangeSelectivity, CostModel.EstimateSelectivity(ComparisonOp.GtEq, distinctValues: 5000));
     }
 
-    /// <summary>The headline claim (PLAN.md §3): a low-selectivity equality predicate should
+    /// <summary>The headline claim (docs/design.md §5): a low-selectivity equality predicate should
     /// cost MORE via an index than a plain scan, and a high-selectivity one should cost LESS.</summary>
     [Fact]
     public void IndexScanCost_CrossesOverWithSelectivity()

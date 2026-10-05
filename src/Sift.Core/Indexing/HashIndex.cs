@@ -3,7 +3,7 @@ using Sift.Core.Values;
 
 namespace Sift.Core.Indexing;
 
-/// <summary>Exact-match only — O(1) lookup, no ordering, so no range scans (PLAN.md §6).</summary>
+/// <summary>Exact-match only — O(1) lookup, no ordering, so no range scans (docs/design.md §4).</summary>
 public sealed class HashIndex : IIndex
 {
     private readonly Dictionary<SqlValue, List<int>> _buckets = new();

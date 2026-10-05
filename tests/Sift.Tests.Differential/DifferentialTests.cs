@@ -30,7 +30,7 @@ public class DifferentialTests
             "SELECT s.brand, b.category FROM fmcg_sales s JOIN brands b ON s.brand = b.brand WHERE promotion_flag = 1");
     }
 
-    /// <summary>The exact bug class the plan calls out (PLAN.md §1, §10): `!=` against a NULL-bearing
+    /// <summary>A bug class the oracle exists to catch (docs/design.md §7): `!=` against a NULL-bearing
     /// column must exclude NULL rows (three-valued UNKNOWN), which a naive engine gets wrong.</summary>
     [Fact]
     public void NotEqualAgainstNullableColumn_ExcludesNulls_MatchingSqliteSemantics()

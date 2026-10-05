@@ -3,7 +3,7 @@ using Sift.Core.Sql.Ast;
 namespace Sift.Core.Planning;
 
 /// <summary>
-/// The whole point of Phase 3 (PLAN.md §3): a sequential scan pays a small cost per row with
+/// The core of the cost-based planner (docs/design.md §5): a sequential scan pays a small cost per row with
 /// good locality; an index scan pays a tree-traversal cost once plus a random-access cost per
 /// *matched* row. When a predicate isn't selective — it matches most of the table — the random
 /// access adds up past what one sequential sweep would have cost, and the planner should refuse
