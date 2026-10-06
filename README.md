@@ -1,115 +1,190 @@
-# Sift — In-Memory SQL Query Engine
+# In-Memory SQL Engine
 
-A SQL query engine built from scratch in C#: a hand-written B+ tree index, a cost-based query
-planner, and a pull-based (Volcano) execution model. No database libraries — SQLite is used
-only as a test oracle.
+A SQL query engine built from scratch in C#. It has a hand-written B+ tree index, a cost-based
+query planner and a pull-based (Volcano) execution model. It uses no database libraries. SQLite
+is used only as a test oracle.
 
-Design notes (scope, execution model, cost model, NULL semantics, testing): [`docs/design.md`](docs/design.md).
+## Why I built this
+
+I had used databases like SQLite and DuckDB as black boxes: write SQL, get rows back. I wanted
+to know what happens in between, such as how a planner decides whether to use an index, why
+`LIMIT 10` can be instant on a huge table, and how NULL comparisons really work. Building one
+from scratch was the best way to find out, and I checked every answer against SQLite.
 
 ## Highlights
 
-- **Cost-based planner** compares real `SeqScan` vs `IndexScan` cost from table statistics — and
-  correctly *declines its own index* on a low-selectivity predicate (`promotion_flag = 0`, ~half
-  the table) in favor of using it on a selective one (`sku = '...'`). Verified both by unit tests
-  and by a benchmark: [880x faster at selectivity 0.001, ~5% *slower* at selectivity 1.0](docs/benchmarks.md).
-- **Hand-written B+ tree** (real node splitting, linked leaves, range scans) and a hash index,
-  both capability-aware — the planner never routes a range predicate to a hash index.
-- **Lazy, pull-based (Volcano) operator tree** — `LIMIT 10` on 190k rows is ~8,300x faster and
-  ~8,700x less allocation than materializing the scan first ([benchmarked](docs/benchmarks.md)).
-- **Differential tested against SQLite**: 500 randomly generated queries plus targeted
-  correctness tests, run every `dotnet test`, both against the real 190,757-row dataset.
-- **Correct SQL three-valued NULL logic**, cost/row-annotated `EXPLAIN`, and a rule-based
-  predicate-pushdown rewrite that's qualifier-aware (so a same-named column on the wrong side of
-  a JOIN can't get silently misattributed — see *Known limitations*).
-- **Parallel aggregation** (`ParallelHashAggregate`): partitions the table, aggregates each
-  partition independently with zero shared mutable state, merges single-threaded. 6.1x speedup
-  at 8 threads on a 16-core machine — sub-linear, and [why that's the expected result, not a
-  shortfall, is in the benchmark writeup](docs/benchmarks.md#parallel-aggregate-1--2--4--8-threads).
+- **Cost-based planner.** It compares `SeqScan` and `IndexScan` costs using table statistics.
+  It turns down its own index when a predicate matches most of the table.
+- **Hand-written B+ tree and hash index.** The B+ tree splits nodes and links its leaves for range
+  scans. The planner knows what each index supports, so it never sends a range predicate to the
+  hash index.
+- **Lazy Volcano execution.** Operators stream rows with `yield return`, so `LIMIT 10` stops the
+  scan after 10 rows.
+- **Differential testing against SQLite.** Every test run executes 500 randomly generated queries
+  plus targeted cases against both engines on the full dataset.
+- **Correct SQL semantics.** It uses three-valued NULL logic, `EXPLAIN` output annotated with costs,
+  and qualifier-aware predicate pushdown.
+- **Parallel aggregation.** It partitions the table, aggregates each partition with no shared
+  mutable state, then merges the results.
 
-## Status: complete (Phases 1–5)
+| Benchmark | Result |
+|---|---|
+| `IndexScan` vs `SeqScan` at selectivity 0.001 (synthetic 190k rows) | **880x faster** |
+| `IndexScan` vs `SeqScan` at selectivity 1.0 (synthetic 190k rows) | 0.95x (index is slower, so the planner uses `SeqScan`) |
+| Lazy `LIMIT 10` vs materializing the scan (190,757 rows) | **~8,300x faster** |
+| Parallel `GROUP BY` at 8 threads (190,757 rows) | **6.1x speedup** |
 
-- [x] Phase 1 — storage, CSV loading, a naive scan/filter/project executor, CLI REPL
-- [x] Phase 2 — the lazy, pull-based (Volcano) operator tree: scan, filter, project, limit, sort,
-  hash aggregate, nested-loop/hash join; logical → physical plan translation
-- [x] Phase 3 — hand-written B+ tree + hash index, table statistics, cost-based scan selection,
-  qualifier-aware predicate pushdown
-- [x] Phase 4 — cost/row-annotated `EXPLAIN`, SQLite differential testing (500-query fuzzer +
-  targeted cases), BenchmarkDotNet suite with real measured numbers
-- [x] Phase 5 — parallel `GROUP BY`/aggregate execution, benchmarked at 1/2/4/8 threads
+## Quick start
 
-Design rationale for every phase: [`docs/design.md`](docs/design.md).
+**Prerequisite:** [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). The version is
+pinned in `global.json`.
 
-## Architecture
+```bash
+git clone https://github.com/nishanthsr7-eng/in-memory-sql-engine.git
+cd in-memory-sql-engine
+dotnet run --project src/InMemorySqlEngine.Cli
+```
 
-![Sift query pipeline](docs/architecture.svg)
+The CLI loads every CSV in `data/` as a table named after the file. To use your own data, pass a
+directory or individual files:
 
-Stage-by-stage walkthrough of every component pictured above: [`docs/architecture.md`](docs/architecture.md).
+```bash
+dotnet run --project src/InMemorySqlEngine.Cli -- --data path/to/csvs
+dotnet run --project src/InMemorySqlEngine.Cli -- sales.csv customers.csv
+```
 
-## Known limitations
+REPL commands: `.tables`, `.schema <table>`, `EXPLAIN <query>`, `.exit`.
 
-- **Ambiguous unqualified columns after a JOIN are not rejected.** If two joined tables share a
-  column name (e.g. both have `category`), Sift resolves an *unqualified* reference to whichever
-  table's column was registered last in the combined schema, rather than raising an error the
-  way SQLite does. Always qualify (`b.category`) when a name could exist on either side — this
-  was caught by the SQLite differential oracle itself (see `DifferentialTests.Join_MatchesSqlite`
-  and the git history for `PredicatePushdown`, which *is* qualifier-aware for exactly this reason).
-- **`ORDER BY` can't reference a column outside the SELECT list *and* a SELECT alias
-  simultaneously** — deliberate scoping, see the comment in `Planner.BuildLogicalPlan`.
-- **`ParallelHashAggregate` isn't reachable from SQL.** It's a real, tested, benchmarked operator
-  (`src/Sift.Core/Execution/ParallelHashAggregate.cs`), but the planner never chooses it
-  automatically — that would need a cost model for *when parallelism is worth it* (small
-  aggregates lose to partition/merge overhead; see the benchmark writeup), which is out of scope
-  for what Phase 5 asks for. Used directly today, e.g. from `Sift.Bench`.
-
-## EXPLAIN example
-
-_(column list on `Project` abbreviated below for readability — the CLI prints all 14)_
+## Example
 
 ```
-sift> CREATE INDEX ON fmcg_sales(sku)
-sift> EXPLAIN SELECT * FROM fmcg_sales WHERE sku = 'MI-006'
+sql> SELECT category, COUNT(*) AS n, SUM(s.units_sold) AS total
+      FROM fmcg_sales s JOIN brands b ON s.brand = b.brand
+      WHERE promotion_flag = 1
+      GROUP BY category HAVING COUNT(*) > 100
+      ORDER BY total DESC
+category  | n     | total
+----------+-------+-------
+Yogurt    | 11081 | 405969
+Milk      | 6551  | 196663
+ReadyMeal | 5047  | 171027
+SnackBar  | 4749  | 164309
+Juice     | 1033  | 31430
+(5 rows in 114 ms)
+```
+
+> The REPL reads one query per line. The query above is wrapped here only for readability.
+
+### EXPLAIN: the planner choosing between scans
+
+With an index on `sku`, a selective predicate uses the index, and a predicate that matches about
+half the table falls back to a sequential scan. The `Project` column list is shortened below.
+
+```
+sql> CREATE INDEX ON fmcg_sales(sku)
+sql> EXPLAIN SELECT * FROM fmcg_sales WHERE sku = 'MI-006'
 Project (...)  (cost=25787.3, est. rows=6359)
   IndexScan on fmcg_sales using BPlusTree index on sku = MI-006  (cost=25469.3, est. rows=6359)
 
-sift> EXPLAIN SELECT * FROM fmcg_sales WHERE promotion_flag = 0
+sql> EXPLAIN SELECT * FROM fmcg_sales WHERE promotion_flag = 0
 Project (...)  (cost=233677.3, est. rows=95378)
   Filter  (cost=228908.4, est. rows=95378)
     SeqScan on fmcg_sales  (cost=190757.0, est. rows=190757)
 ```
 
+## Supported SQL
+
+| Feature | Supported |
+|---|---|
+| Projection | Column list, `*`, `AS` aliases |
+| Joins | Any number of `JOIN ... ON a.col = b.col` (inner equi-joins) |
+| Filtering | `= != < <= > >=`, `BETWEEN`, `IN`, `IS [NOT] NULL`, with `AND` / `OR` / `NOT` |
+| Aggregation | `GROUP BY`, `HAVING`, `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` |
+| Ordering | `ORDER BY ... [ASC\|DESC]` (NULLs sort last), `LIMIT n` |
+| Commands | `EXPLAIN <query>`, `CREATE INDEX ON table(col) [USING HASH\|BTREE]` |
+| Types | `INT`, `DECIMAL`, `TEXT`, `DATE`, `BOOL` (inferred from CSV) |
+
+**Not supported:** `DISTINCT`, subqueries, `UNION`, window functions, `CASE`, arithmetic
+expressions, outer or non-equi joins, and writes (`INSERT` / `UPDATE` / `DELETE`). The engine is a
+read-only analytical engine. [`docs/design.md`](docs/design.md#1-scope-and-parsing) explains the scope.
+
+## Architecture
+
+![Query pipeline](docs/architecture.svg)
+
+SQL text is parsed into an AST and turned into a logical plan. Predicate pushdown rewrites the
+logical plan, and the planner compiles it into a tree of physical operators, choosing between
+`SeqScan` and `IndexScan` by cost. [`docs/architecture.md`](docs/architecture.md) walks through
+each stage.
+
 ## Benchmarks
 
 ![SeqScan vs IndexScan crossover chart](docs/crossover.svg)
+
 ![Parallel GROUP BY speedup vs thread count](docs/parallel-speedup.svg)
 
-Full methodology, machine spec, and every benchmark (index lookup, range scan, join, laziness,
-parallel aggregate) in [`docs/benchmarks.md`](docs/benchmarks.md).
-
-## Running it
+The benchmarks use BenchmarkDotNet's `ShortRunJob` (3 warmup and 3 measured iterations) with a
+Release build. That is enough to show the trends but less precise than the default job.
+[`docs/benchmarks.md`](docs/benchmarks.md) covers the methodology, the machine spec and every
+result.
 
 ```bash
-dotnet run --project src/Sift.Cli
-```
-
-```
-sift> SELECT category, COUNT(*) AS n, SUM(s.units_sold) AS total FROM fmcg_sales s JOIN brands b ON s.brand = b.brand WHERE promotion_flag = 1 GROUP BY category HAVING COUNT(*) > 100 ORDER BY total DESC
+dotnet run --project src/InMemorySqlEngine.Bench -c Release -- --filter "*"
 ```
 
 ## Testing
 
 ```bash
-dotnet test
+dotnet test                                    # unit + differential suites (~3 min)
+dotnet test --filter "Category!=Differential"  # unit tests only (seconds)
 ```
 
-Runs the unit test suite plus the differential suite (500 random queries + targeted cases
-against SQLite) — expect the differential run to take ~2–3 minutes; it loads the real
-190,757-row dataset into both engines.
+The differential suite loads the full dataset into both the engine and SQLite. It runs 500 random
+queries and targeted cases, and compares the result sets.
 
-## Benchmarking
+## Project structure
 
-```bash
-dotnet run --project src/Sift.Bench -c Release -- --filter "*"
 ```
+src/
+  InMemorySqlEngine.Core/                engine: SQL parsing, catalog, indexes, planner, operators, values
+  InMemorySqlEngine.Cli/                 interactive REPL
+  InMemorySqlEngine.Bench/               BenchmarkDotNet suite
+tests/
+  InMemorySqlEngine.Tests/               unit tests
+  InMemorySqlEngine.Tests.Differential/  SQLite oracle and random query generator
+data/                                    sample dataset (see data/README.md)
+docs/                                    design notes, architecture, benchmarks
+```
+
+## Known limitations
+
+- **Ambiguous unqualified columns after a JOIN are not rejected.** If two joined tables share a
+  column name, an unqualified reference resolves to the last one registered. SQLite raises an
+  error instead. Qualify the column (`b.category`) whenever a name exists on both sides.
+- **`ORDER BY` cannot mix a column outside the SELECT list with a SELECT alias.** This is
+  deliberately out of scope (see `Planner.BuildLogicalPlan`).
+- **The planner never chooses `ParallelHashAggregate`.** The operator is tested and benchmarked,
+  but choosing it automatically would need a cost model for when parallelism pays off. Small
+  aggregates lose to the partition and merge overhead.
+- **`SqlValue` is wide.** It keeps a separate field for each type, so every cell reserves space for
+  all five types. This avoids boxing but costs memory and cache locality during scans. A union
+  layout or columnar storage would shrink it.
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/design.md`](docs/design.md) | Design decisions: scope, Volcano execution, cost model, NULL semantics, testing |
+| [`docs/architecture.md`](docs/architecture.md) | A walkthrough of each component |
+| [`docs/benchmarks.md`](docs/benchmarks.md) | Methodology, machine spec, all benchmark results |
+| [`data/README.md`](data/README.md) | Dataset source and license |
+| [`CHANGELOG.md`](CHANGELOG.md) | Release history |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to build, test and contribute |
+
+## Dataset
+
+The sample data is the synthetic [FMCG Daily Sales Data (2022–2024)](https://www.kaggle.com/datasets/beatafaron/fmcg-daily-sales-data-to-2022-2024)
+by Beata Faron, released under CC0. It has 190,757 rows and 14 columns.
 
 ## License
 

@@ -1,10 +1,10 @@
 # Architecture
 
-![Sift query pipeline](architecture.svg)
+![Query pipeline](architecture.svg)
 
 ## Pipeline, stage by stage
 
-**Lexer + Parser** (`src/Sift.Core/Sql/`) — hand-rolled recursive descent, no generator, no
+**Lexer + Parser** (`src/InMemorySqlEngine.Core/Sql/`) — hand-rolled recursive descent, no generator, no
 regex. Turns SQL text into an AST (`Sql/Ast/`). Deliberately the least interesting layer by
 design ([design.md §1](design.md#1-scope-and-parsing)): the grammar is a fixed, documented subset of ANSI SQL, not an attempt
 at full compatibility, so the parser stays small while the planner and execution engine — the
@@ -18,7 +18,7 @@ any physical strategy is chosen.
 **PredicatePushdown** (`Planning/Rules/PredicatePushdown.cs`) — the one rule-based rewrite: splits
 a WHERE clause into its AND-conjuncts and moves each one below a JOIN if it only references one
 side. Qualifier-aware — `b.category` can't get misattributed to an unrelated same-named column
-on the other side of the join (a real bug this project's own differential tests caught; see the
+on the other side of the join (a bug the SQLite differential tests caught; see the
 README's *Known limitations*).
 
 **Planner + CostModel** (`Planning/Planner.cs`, `Planning/CostModel.cs`) — the one place a real
@@ -59,15 +59,15 @@ ness is a checked property, not something a caller can silently forget. Comparis
 `True`; `WHERE` keeps only `True` rows). `Equals`/`GetHashCode` treat `Int` and `Decimal` values
 as numerically interchangeable (`5` equals `5.0`) — both funnel through the same canonical
 `decimal` conversion for hashing, specifically so that invariant holds for `GetHashCode` too, not
-just `Equals` (a real bug this project's own audit found and fixed: `long.GetHashCode()` and
+just `Equals` (a bug found and fixed during review: `long.GetHashCode()` and
 `decimal.GetHashCode()` disagree for negative values even when numerically equal).
 
 ## Proof, not just a build
 
 - **`EXPLAIN`** prints the physical plan with real cost/row estimates on every operator — the
   same numbers the planner used to decide, not display-only figures.
-- **Differential testing against SQLite** (`tests/Sift.Tests.Differential/`): the same CSVs
+- **Differential testing against SQLite** (`tests/InMemorySqlEngine.Tests.Differential/`): the same CSVs
   loaded into both engines, the same SQL text run against both, results compared as canonicalized
   sets. A 500-query random generator plus targeted correctness tests run on every `dotnet test`.
-- **BenchmarkDotNet** (`src/Sift.Bench/`, [`docs/benchmarks.md`](benchmarks.md)): every claim in
+- **BenchmarkDotNet** (`src/InMemorySqlEngine.Bench/`, [`docs/benchmarks.md`](benchmarks.md)): every claim in
   the README is a real measured number from this suite, not an assumed or estimated one.

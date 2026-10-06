@@ -10,7 +10,7 @@
 - All data from the real `data/fmcg_sales.csv` (190,757 rows, 14 columns) and `data/brands.csv`
   (14 rows), except the selectivity crossover benchmark, which uses a synthetic 190,000-row
   table so selectivity can be swept independently of what values happen to exist in the CSV.
-- Reproduce with `dotnet run --project src/Sift.Bench -c Release -- --filter "*"`.
+- Reproduce with `dotnet run --project src/InMemorySqlEngine.Bench -c Release -- --filter "*"`.
 
 **Machine**: AMD Ryzen 9 8940HX (16 physical / 32 logical cores), 16 GB RAM, Windows 11,
 .NET SDK 8.0.424, .NET runtime 8.0.30.
@@ -69,11 +69,9 @@ over a plain hash table.
 | NestedLoop (baseline) | 41.35 ms | 161.6 MB |
 | Hash | 30.03 ms | 161.6 MB |
 
-Hash join wins by ~1.4x, not an order of magnitude — because the build side here (`brands`) is
-tiny (14 rows), nested-loop's O(n·m) is only 14x worse than a single pass, not the catastrophic
-blowup it would be joining two large tables. This is the realistic case for the classic
-"nested-loop only wins on small inputs" rule: brands *is* the small input, so nested-loop isn't
-far behind — it would fall apart joining two large fact tables instead.
+Hash join wins by only ~1.4x. The build side (`brands`) has just 14 rows, so nested-loop's
+O(n·m) costs at most 14 comparisons per probe row. Hash join's advantage grows with the size of
+the smaller input. Joining two large tables, nested-loop would fall far behind.
 
 ## Lazy `LIMIT 10` vs materialized
 
@@ -84,11 +82,10 @@ Pulling 10 rows through the operator tree vs. materializing the full 190,757-row
 | MaterializeThenTake (baseline) | 546,170 ns | 1,526,203 B |
 | LazyLimit | 65.7 ns | 176 B |
 
-**~8,300x faster, ~8,700x less allocated.** This is the laziness claim from [design.md §3](design.md#3-execution-volcano-with-yield-return) with a
-number attached, not a vibe: `LazyLimit` only ever constructs the 10 rows it returns: the
-`yield return` chain from `Limit` down through `SeqScan` means downstream code stops pulling the
-instant the count is reached, and the C# iterator state machine never materializes the other
-190,747.
+**~8,300x faster, ~8,700x less allocated.** This measures the laziness described in
+[design.md §3](design.md#3-execution-volcano-with-yield-return). `LazyLimit` builds only the 10
+rows it returns. The `yield return` chain from `Limit` down to `SeqScan` stops pulling as soon as
+the count is reached, so the other 190,747 rows are never materialized.
 
 ## Parallel aggregate: 1 / 2 / 4 / 8 threads
 
@@ -107,21 +104,14 @@ count to keep the comparison honest — see methodology).
 | 4 | 31.44 ms | 9.13 ms | 3.44x | 86% |
 | 8 | 30.89 ms | 5.07 ms | 6.10x | 76% |
 
-**Real, but sub-linear, and that's the expected result, not a shortfall.** Efficiency drops
-steadily as thread count rises — from 94% at 2 threads to 76% at 8 — for two structural reasons,
-neither of which more engineering effort inside this operator removes:
+**Real, but sub-linear, as expected.** Efficiency falls from 94% at 2 threads to 76% at 8, for
+two structural reasons:
 
-1. **Merge overhead is fixed, not embarrassingly parallel.** Only the per-partition scan+filter+accumulate
-   phase parallelizes; combining N partitions' accumulator dictionaries back into one still runs
-   single-threaded afterward. With only 14 groups here that merge is cheap in absolute terms, but
-   it doesn't shrink as thread count grows, so it's a proportionally larger tax at 8 threads than at 2.
-2. **Memory bandwidth is shared, not multiplied.** All 16 physical cores on this machine read
-   from the same DRAM controllers. A scan is bandwidth-bound, not compute-bound — reading a
-   190k-row table 8-way in parallel contends for the same memory bandwidth 1 thread would have
-   used alone, so doubling the workers doesn't come close to doubling the useful throughput. This
-   is the standard, textbook reason parallel scan/aggregate speedup curves bend rather than stay
-   linear — the CPU is rarely the bottleneck for this kind of workload in the first place.
+1. **The merge is serial.** Only the per-partition scan, filter and accumulate phase runs in
+   parallel. Merging the partition results runs on one thread afterward, and that fixed cost is
+   a larger share of the total as the parallel part shrinks.
+2. **Memory bandwidth is shared.** A scan is bandwidth-bound, not compute-bound. All cores read
+   through the same memory controllers, so adding threads doesn't add proportional throughput.
 
-`Threads=1` sitting at ~1.0x (not below it) confirms the partition/merge machinery itself isn't
-the source of the non-linearity — the overhead only becomes visible once there's contention to
-divide it against.
+At `Threads=1` the result is ~1.0x, not lower. That shows the partition and merge machinery
+adds no measurable overhead on its own.

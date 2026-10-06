@@ -1,6 +1,6 @@
-# Sift design notes
+# Design notes
 
-These notes explain the main design decisions in Sift and the reasons for them.
+These notes explain the main design decisions in the engine and the reasons for them.
 For a walkthrough of each component, see [`architecture.md`](architecture.md). For measured
 numbers, see [`benchmarks.md`](benchmarks.md).
 
@@ -14,7 +14,7 @@ so most of the work went into planning, indexing, execution and testing.
 ```sql
 SELECT  col, col, AGG(col) [AS alias]
 FROM    table [alias]
-[JOIN   table [alias] ON a.col = b.col]
+[JOIN   table [alias] ON a.col = b.col] ...
 [WHERE  predicate [AND|OR predicate]]
 [GROUP BY col, col]
 [HAVING predicate]
@@ -25,7 +25,7 @@ FROM    table [alias]
 - Predicates: `= != < <= > >= BETWEEN IN IS NULL IS NOT NULL`
 - Aggregates: `COUNT, SUM, AVG, MIN, MAX`
 - Types: `INT, DECIMAL, TEXT, DATE, BOOL`
-- Commands: `EXPLAIN <query>`, `CREATE INDEX ON table(col)`
+- Commands: `EXPLAIN <query>`, `CREATE INDEX ON table(col) [USING HASH|BTREE]`
 
 There are no arithmetic expressions, so a `-` directly before a digit is always the sign of a
 literal. The lexer depends on this.
@@ -33,12 +33,12 @@ literal. The lexer depends on this.
 ### Out of scope
 
 - Subqueries, `UNION`, window functions, `CASE`, `DISTINCT`
-- `INSERT` / `UPDATE` / `DELETE`. Sift is a read-only, in-memory analytical engine.
+- `INSERT` / `UPDATE` / `DELETE`. The engine is a read-only, in-memory analytical engine.
 - Disk persistence, WAL, transactions, MVCC, locking
 - B+ tree deletion. A read-only engine only needs insert and search, and rebalancing on
   delete is complex.
-- Multi-column indexes and join reordering. Only one join is supported, so put the smaller
-  table on the right of `JOIN`.
+- Multi-column indexes, outer joins, and join reordering. Joins run in the order written,
+  so put the smaller table on the right of each `JOIN`.
 
 ## 2. Pipeline
 
@@ -108,7 +108,7 @@ the table) gets a `SeqScan`. The planner turns down its own index.
 The benchmark confirms the model. On a synthetic 190,000-row table, `IndexScan` is 880x faster
 at selectivity 0.001 and about 5% *slower* (0.95x) at selectivity 1.0.
 
-Real systems use histograms for skewed data. Sift uses uniform distinct-count estimates on
+Real systems use histograms for skewed data. The engine uses uniform distinct-count estimates on
 purpose, and histograms would be the next step.
 
 ### Predicate pushdown
@@ -119,7 +119,7 @@ qualifier-aware. A same-named column on the wrong side of a join is never misatt
 
 ## 6. NULL semantics
 
-SQL uses three-valued logic: `TRUE`, `FALSE` and `UNKNOWN`. Sift implements it with a `SqlValue`
+SQL uses three-valued logic: `TRUE`, `FALSE` and `UNKNOWN`. The engine implements it with a `SqlValue`
 struct that carries an explicit null flag, plus a `SqlBool { True, False, Unknown }` enum. It
 does not use C#'s `bool?`.
 
@@ -129,17 +129,18 @@ does not use C#'s `bool?`.
 - `SUM` and `AVG` ignore NULLs. `AVG` over only NULLs returns `NULL`, not `0`.
 - A `GROUP BY` with no input groups returns no rows. A bare aggregate with no input returns
   one row.
-- `ORDER BY` always sorts NULLs last, for both `ASC` and `DESC`. This is a fixed rule, and the
-  differential tests apply it when they compare results with SQLite.
+- `ORDER BY` always sorts NULLs last, for both `ASC` and `DESC`. This is a fixed, documented
+  rule. SQLite sorts NULLs first in ascending order, so the differential tests compare result
+  sets rather than row order.
 
 ## 7. Testing: SQLite as the oracle
 
-Unit tests check each piece separately: B+ tree invariants after random inserts, parser golden
-tests, operators on small fixed tables, and the *shape* of the plan the planner picks.
+Unit tests check each piece separately: B+ tree invariants after random inserts, parser tests
+including malformed input, operators on small fixed tables, and the *shape* of the plan the planner picks.
 
 For end-to-end correctness, SQLite (`Microsoft.Data.Sqlite`) serves as a **test oracle**. The
 same CSV files load into both engines, the same SQL runs against both, and the result sets
-must match. A random query generator produces 500 valid queries in Sift's grammar on every
+must match. A random query generator produces 500 valid queries in the engine's grammar on every
 test run, alongside targeted cases.
 
 The oracle found real bugs. One was `!=` matching NULL rows. Another was an ambiguous
